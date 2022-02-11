@@ -2,7 +2,7 @@
 ;;;;CSDS 345
 ;;;; Quyen Huynh
 ;;;; Tammy Lin
-;;;; Nhan Truong
+;;;; Elizabeth Waters
 ;;;; Part 1 
 
 (require "simpleParser.rkt")
@@ -17,7 +17,7 @@
 (define Mvalue
   (lambda (expression)
     (cond
-      ((number? expression) (error 'Mvalue "Undefined"))
+      ((number? expression) (expression))
       ((eq? expression 'true) #t)
       ((eq? expression 'false) #f)
       ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
@@ -37,11 +37,12 @@
   (lambda (expression state)
     ((null? expression) expression)
     ((eq? (operator expression) 'var) (declare expression state));make a func. for declare
-    ((eq? (operator expression) '=) (assign expression state))
-    ((eq? (operator expression) 'while) (while-loop expression state))
-    ((eq? (operator expression) 'return) (return expression state))
+    ((eq? (operator expression) '=) (assign expression state));; call assign
+    ((eq? (operator expression) 'while) (while-loop expression state)) ;; call while
+    ((eq? (operator expression) 'return) (return expression state));; call return 
     ((eq? (operator expression) 'if) (if-loop expression state))
     (else 'Mtype "Not Valid Type")))
+;;((var x) (= x 10) (var y (+ (* 3 x) 5)) (while (!= (% y x) 3) (= y (+ y 1))) (if (> x y) (return x) (if (> (* x x) y) (return (* x x)) (if (> (* x (+ x x)) y) (return (* x (+ x x))) (return (- y 1))))))
 
 ;;declare
 (define declare
@@ -49,12 +50,38 @@
     (cond
       ((null? expression) expression)
       ((check-declaare expression state) #t))))
+
+
+;; assign
+(define assign
+  (lambda ( expression expression)))
+
+;; removebind 
+(define removebind
+  (lambda (expression)))
+
+;;addbind
+(define addbind
+  (lambda (expression)))
+
+;;if-loop
+(define if-loop
+  (lambda (expression)))
+
+;; while-loop
+(define while-loop
+  (lambda (expression)))
+
+
+
+
+
     
     
 
 
     
-;;********** helper *********;;
+;; ********** helper ********* ;;
 (define check-declare
   (lambda (expression state)
     ((null? state) #f)
@@ -63,7 +90,7 @@
 
 
    
-;;************ Abstraction ************** ;;;;;
+;;************ Abstraction ************** ;;
 (define operator
   (lambda (exp)
     (car exp)))
@@ -79,7 +106,7 @@
 (define the-rest cdr)
 (define the-head car)
 (define empty-lis '())
-(define the-hhead caar)
+(define the-hhead caar) ;; the front of the front of the state 
 
     
 
