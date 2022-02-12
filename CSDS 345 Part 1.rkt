@@ -16,12 +16,12 @@
 (define intepreterRule
   (lambda (expression state)
     (cond
-    ((null? expression) expression)
+    ((null? expression) '())
     ((number? expression) expression)
-    (else (intepreterRule (the-rest expression) (Mtype (the-head expression)))))))
+    (else (intepreterRule (the-rest expression) (Mstate (the-head expression)))))))
 
 ;; take in an expression and a state -> return the type updated of the expression 
-(define Mtype 
+(define Mstate
   (lambda (expression state)
     ((null? expression) expression)
     ((eq? (operator expression) 'var) (declare expression state));make a func. for declare
@@ -33,12 +33,13 @@
 
 ;; return the value for the expression 
 (define Mvalue
-  (lambda (expression)
+  (lambda (expression state)
     (cond
       ((number? expression) (expression))
       ((eq? expression 'true) #t)
       ((eq? expression 'false) #f)
-      ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
+      ((if (eq? (isVariable? expression state) #t)) (retrieveValue expression state))  ;;make helper for isVariable 
+      ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)state) (Mvalue (rightoperand expression)state)))
       ((eq? (operator expression) '-) (- (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
       ((eq? (operator expression) '*) (* (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
       ((eq? (operator expression) '/) (quotient (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
@@ -50,37 +51,45 @@
 
 ;;declare
 (define declare
-  (lambda (expression state)
+  (lambda (lis state)
     (cond
-      ((null? expression) expression) ;;invalid expression cant be declared 
-      ((check-declare expression state) #t))))
+      ((null? lis) '()) ;;invalid expression cant be declared 
+      ((eq? (check-declare expression state) #t) (error 'Mstate "Already declared"))
+      ((eq? (check-declare expression state) #f) (add-bind(lis (Mvalue (cddr lis) state) state)))
+      (else (error 'declare "No Value")))))
+
+;; check if a varible is ion the state alr -> if yes then you want remove-binding and then add-binding ELSE if its not in the there then error ELSE check M-value    
 
 ;;boolean
 (define Mbooelan
   (lambda (if-loop state)
     ((null? if-loop) ( error 'Mboolean "Invalid Statement"))
-      ((eq? (operator if-cond) '<)   (< (Mvalue (operand1 if-cond) state) (mValue (operand2 if-cond) state)))
-      ((eq? (operator if-cond) '>)   (> (Mvalue (operand1 if-cond) state) (mValue (operand2 if-cond) state)))
-      ((eq? (operator if-cond) '<=)  (<= (Mvalue (operand1 if-cond) state) (MValue (operand2 if-cond) state)))
-      ((eq? (operator if-cond) '>=)  (>= (MValue (operand1 if-cond) state) (MValue (operand2 if-cond) state)))
-      ((eq? (operator if-cond) '==)  (eq? (MValue (operand1 if-cond) state) (MValue (operand2 if-cond) state))])
-      ((eq? (operator if-cond) '!=)  (not (eq? (MValue (operand1 if-cond) state) (MValue (operand2 if-cond) state))))
-      ((eq? (operator if-cond) '||)  (or (MValue (operand1 if-cond) state) (MValue (operand2 if-cond) state)))
-      ((eq? (operator if-cond) '&&)  (and (MValue (operand1 if-cond) state) (MValue (operand2 if-cond) state)))
-      ((eq? (operator if-cond) '!)   (not (MValue (operand1 if-cond) state))))))
+      ((eq? (operator if-cond) '<)   (< (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
+      ((eq? (operator if-cond) '>)   (> (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
+      ((eq? (operator if-cond) '<=)  (<= (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
+      ((eq? (operator if-cond) '>=)  (>= (Mvalue (operand1 if-cond) state) (MValue (operand2 if-cond) state)))
+      ((eq? (operator if-cond) '==)  (eq? (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
+      ((eq? (operator if-cond) '!=)  (not (eq? (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state))))
+      ((eq? (operator if-cond) '||)  (or (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
+      ((eq? (operator if-cond) '&&)  (and (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
+      ((eq? (operator if-cond) '!)   (not (Mvalue (operand1 if-cond) state)))))
 
 
 ;; assign
 (define assign
-  (lambda ( expression expression)))
+  (lambda ( expression state)
+    (cond
+      ((null? (cdr expression)) (error 'assign "cant assign"))
+      ((eq? (check-declare expression state) #t) (addBind( (cons 'var (cadr exp)) (Mvalue(cddr expression) state) (removebind (cadr exp))))))))
 
 ;; removebind 
 (define removebind
-  (lambda (expression)))
+  (lambda (name state)
+    (cond
+      [(null? state) '()]
+      [(eq? name (first-state-var(s)) (cdr state))]
+      [else (cons (car state) (removebind(cdr state)))])))
 
-;;addbind
-(define addbind
-  (lambda (expression)))
 
 ;;if-loop
 (define if-loop
@@ -101,13 +110,26 @@
     
 ;; ********** helper ********* ;;
 (define check-declare
-  (lambda (expression state)
-    ((null? state) #f)
-    ((eq? (the-hhead state) expression) #t)
-    (else (check-declare expression (next-s state)))))
+  (lambda (lis state)
+    (cond
+      ((null? state) #f)
+      ((eq? first-state-var input-name) #t)
+      (else (check-declare(lis next-s))))))
 
+(define add-bind
+  (lambda (lis value state)
+    (cons (format (car lis) (caar lis) value )state)))  ;; format the input - name type value
 
-   
+(define format
+  (lambda (lis value)
+    (append(append(car lis) (car (car lis)) ) value)))
+
+ (define retrieveValue
+   (lambda (name state)
+     (cond
+       ((null? state) (error 'retrieveValue "Error"))
+       ((eq? name first-state-var(state)) (cddr (first-state-var(state))))
+       (else (retrieveValue (name next-s))))))
 ;;************ Abstraction ************** ;;
 (define operator
   (lambda (exp)
@@ -124,7 +146,23 @@
 (define the-rest cdr)
 (define the-head car)
 (define empty-lis '())
-(define the-hhead caar) ;; the front of the front of the state 
+
+(define input-name
+  (lamnda (lis)
+          (car(cdr lis))))
+
+(define first-state-var
+  (lambda (state)
+    (cadr (car lis))))
+
+(define the-hhead cadr) ;; the front of the front of the state
+
+(define isVariable
+  (lambda (name state)
+    (cond
+      ((null? state) #f)
+      ((eq? name first-state-var(state)) #t)
+      (else (isVariable name next-s)))))
 
     
 
