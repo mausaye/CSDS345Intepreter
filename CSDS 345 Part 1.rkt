@@ -35,6 +35,7 @@
 (define Mvalue
   (lambda (expression state)
     (cond
+      ((null? expression) (error 'Mvalue "enter value invalid"))
       ((number? expression) (expression))
       ((eq? expression 'true) #t)
       ((eq? expression 'false) #f)
@@ -63,7 +64,8 @@
 ;;boolean
 (define Mbooelan
   (lambda (if-cond state)
-    ((null? if-cond) ( error 'Mboolean "Invalid Statement"))
+      ((null? if-cond) ( error 'Mboolean "Invalid Statement"))
+      ((
       ((eq? (operator if-cond) '<)   (< (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
       ((eq? (operator if-cond) '>)   (> (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
       ((eq? (operator if-cond) '<=)  (<= (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
@@ -96,17 +98,17 @@
 (define if-loop
   (lambda (lis state)
     (cond
+      ((Mboolean (car(cdr
       ((null? lis) (error 'if-loop "input expression is null"))
       ((Mboolean (car(cdr lis)) state) (Mstate (first-satement lis) state))
-      ((not(Mboolean (car(cdr lis)) state)) (Mstate ( second-statement lis) state))
-      (else (error 'if-loop "invalid statement"))))) ;; any other condition to check 
-
+      ((else (if-statement (cadddr lis) state))))))
+      
 ;; while-loop
 (define while-loop
   (lambda (lis state)
     (cond
-      ((null? lis) (error 'while-loop "invvalid while-loop"))
-      ((Mboolean (car(cdr lis)) state) ()))) ;; need to finish 
+      ((null? lis) (error 'while-loop "invalid while-loop"))
+      ((Mboolean (car(cdr lis)) state) ())))) ;; need to finish 
 
 ;;return 
 
@@ -129,11 +131,7 @@
 
 (define add-bind
   (lambda (lis value state)
-    (cons (format (car lis) (caar lis) value )state)))  ;; format the input - name type value
-
-(define format
-  (lambda (lis value)
-    (append(append (car lis) (car (car lis)) ) value))) ;; we are appending it value twice here and add-bind 
+    (cons (cons (cons (car lis) (cadr lis)) value) state)))  ;; format the input - name type value
 
  (define retrieveValue
    (lambda (name state)
@@ -179,7 +177,7 @@
 
 (define first-statement
   (lambda (lis)
-    (car(cdr(lis)))))
+    (caddr (lis))))
 
 (define second-statement
   (lambda (lis)
