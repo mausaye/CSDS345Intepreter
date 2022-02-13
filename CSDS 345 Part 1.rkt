@@ -38,7 +38,7 @@
       ((number? expression) (expression))
       ((eq? expression 'true) #t)
       ((eq? expression 'false) #f)
-      ((if (eq? (isVariable? expression state) #t)) (retrieveValue expression state))  ;;make helper for isVariable 
+      ((if (eq? (isVariable? expression state) #t)) Mvalue (retrieveValue expression state) state)  ;; if it's not a variable -> then retrieve its value ;;change this because it wasnt recursive  
       ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)state) (Mvalue (rightoperand expression)state)))
       ((eq? (operator expression) '-) (- (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
       ((eq? (operator expression) '*) (* (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
@@ -62,8 +62,8 @@
 
 ;;boolean
 (define Mbooelan
-  (lambda (if-loop state)
-    ((null? if-loop) ( error 'Mboolean "Invalid Statement"))
+  (lambda (if-cond state)
+    ((null? if-cond) ( error 'Mboolean "Invalid Statement"))
       ((eq? (operator if-cond) '<)   (< (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
       ((eq? (operator if-cond) '>)   (> (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
       ((eq? (operator if-cond) '<=)  (<= (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
@@ -72,7 +72,7 @@
       ((eq? (operator if-cond) '!=)  (not (eq? (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state))))
       ((eq? (operator if-cond) '||)  (or (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
       ((eq? (operator if-cond) '&&)  (and (Mvalue (operand1 if-cond) state) (Mvalue (operand2 if-cond) state)))
-      ((eq? (operator if-cond) '!)   (not (Mvalue (operand1 if-cond) state)))))
+      ((eq? (operator if-cond) '!)   (not (Mvalue (operand1 if-cond) state))))) ;; what happen if it's a list like (!= (% y x) 3)
 
 
 ;; assign
@@ -80,7 +80,8 @@
   (lambda ( expression state)
     (cond
       ((null? (cdr expression)) (error 'assign "cant assign"))
-      ((eq? (check-declare expression state) #t) (addBind( (cons 'var (cadr exp)) (Mvalue(cddr expression) state) (removebind (cadr exp))))))))
+      ((eq? (check-declare expression state) #t) (add-bind( (cons 'var (cadr exp)) (Mvalue(cddr expression) state) (removebind (cadr exp)))))
+      (else (error 'assign "expression has not declared")))))
 
 ;; removebind 
 (define removebind
@@ -93,11 +94,21 @@
 
 ;;if-loop
 (define if-loop
-  (lambda (expression)))
+  (lambda (lis state)
+    (cond
+      ((null? lis) (error 'if-loop "input expression is null"))
+      ((Mboolean (car(cdr lis)) state) (Mstate (first-satement lis) state))
+      ((not(Mboolean (car(cdr lis)) state)) (Mstate ( second-statement lis) state))
+      (else (error 'if-loop "invalid statement"))))) ;; any other condition to check 
 
 ;; while-loop
 (define while-loop
-  (lambda (expression)))
+  (lambda (lis state)
+    (cond
+      ((null? lis) (error 'while-loop "invvalid while-loop"))
+      ((Mboolean (car(cdr lis)) state) ()))) ;; need to finish 
+
+;;return 
 
 
 
@@ -122,7 +133,7 @@
 
 (define format
   (lambda (lis value)
-    (append(append(car lis) (car (car lis)) ) value)))
+    (append(append (car lis) (car (car lis)) ) value))) ;; we are appending it value twice here and add-bind 
 
  (define retrieveValue
    (lambda (name state)
@@ -130,6 +141,8 @@
        ((null? state) (error 'retrieveValue "Error"))
        ((eq? name first-state-var(state)) (cddr (first-state-var(state))))
        (else (retrieveValue (name next-s))))))
+
+
 ;;************ Abstraction ************** ;;
 (define operator
   (lambda (exp)
@@ -153,7 +166,7 @@
 
 (define first-state-var
   (lambda (state)
-    (cadr (car lis))))
+    (cadr (car lis)))) ;; in order to change it, we can do caar of the state here to put it in (var value state) 
 
 (define the-hhead cadr) ;; the front of the front of the state
 
@@ -163,6 +176,15 @@
       ((null? state) #f)
       ((eq? name first-state-var(state)) #t)
       (else (isVariable name next-s)))))
+
+(define first-statement
+  (lambda (lis)
+    (car(cdr(lis)))))
+
+(define second-statement
+  (lambda (lis)
+    (car(cddr(lis)))))
+
 
     
 
