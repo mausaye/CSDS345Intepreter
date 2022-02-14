@@ -37,7 +37,7 @@
   (lambda (expression state)
     (cond
       ((null? expression) (error 'Mvalue "enter value invalid"))
-      ((number? (car expression)) expression)
+      ((number? expression) expression)
       ((eq? expression 'true) #t)
       ((eq? expression 'false) #f)
       ((eq? (isVariable? expression state) #t) Mvalue (retrieveValue expression state) state)  ;; if it's not a variable -> then retrieve its value ;;change this because it wasnt recursive  
@@ -84,7 +84,7 @@
   (lambda ( expression state)
     (cond
       ((null? (cdr expression)) (error 'assign "cant assign"))
-      ((eq? (check-declare expression state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mvalue(cdadr expression) state) (removebind (cadr expression) state)))
+      ((eq? (check-declare expression state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mvalue(caddr expression) state) (removebind (cadr expression) state)))
       (else (error 'assign "expression has not declared")))))
 
 ;; removebind 
@@ -137,7 +137,7 @@
   (lambda (lis state)
     (cond
       ((null? state) #f)
-      ((eq? (first-state-var state) (caadr lis)) #t)
+      ((eq? (first-state-var state) (input-name lis)) #t)
       (else (check-declare lis (next-s state ))))))
 
 (define add-bind
