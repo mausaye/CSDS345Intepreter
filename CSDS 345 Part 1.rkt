@@ -37,15 +37,15 @@
   (lambda (expression state)
     (cond
       ((null? expression) (error 'Mvalue "enter value invalid"))
-      ((number? (car expression)) expression)
+      ((number? expression) expression)
       ((eq? expression 'true) #t)
       ((eq? expression 'false) #f)
-      ((eq? (isVariable? expression state) #t) Mvalue (retrieveValue expression state) state)  ;; if it's not a variable -> then retrieve its value ;;change this because it wasnt recursive  
+      ((eq? (isVariable? expression state) #t) (Mvalue (retrieveValue expression state) state))  ;; if it's not a variable -> then retrieve its value ;;change this because it wasnt recursive  
       ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)state) (Mvalue (rightoperand expression)state)))
-      ((eq? (operator expression) '-) (- (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
-      ((eq? (operator expression) '*) (* (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
-      ((eq? (operator expression) '/) (quotient (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
-      ((eq? (operator expression) '%) (remainder (Mvalue (leftoperand expression)) (Mvalue (rightoperand expression))))
+      ((eq? (operator expression) '-) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? (operator expression) '*) (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? (operator expression) '/) (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? (operator expression) '%) (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       (else (error 'badop "Bad operator")))))
 
 
@@ -57,7 +57,8 @@
     (cond
       ((null? lis) '()) ;;invalid expression cant be declared 
       ((eq? (check-declare lis state) #t) (error 'Mstate "Already declared"))
-      ((eq? (check-declare lis state) #f) (add-bind lis (Mvalue (caddr lis) state) state))
+      ((and (eq? (check-declare lis state) #f) (null? (cddr lis))) (add-bind lis null state))
+      ((eq? (check-declare lis state) #f)  (add-bind lis (Mvalue (caddr lis) state) state))
       (else (error 'declare "No Value")))))
 
 ;; check if a varible is ion the state alr -> if yes then you want remove-binding and then add-binding ELSE if its not in the there then error ELSE check M-value    
@@ -84,7 +85,7 @@
   (lambda ( expression state)
     (cond
       ((null? (cdr expression)) (error 'assign "cant assign"))
-      ((eq? (check-declare expression state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mvalue(cdadr expression) state) (removebind (cadr expression) state)))
+      ((eq? (check-declare expression state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mvalue(caddr expression) state) (removebind (cadr expression) state)))
       (else (error 'assign "expression has not declared")))))
 
 ;; removebind 
@@ -110,7 +111,8 @@
   (lambda (lis state)
     (cond
       ((null? lis) (error 'while-loop "invalid while-loop"))
-      ((Mboolean (car(cdr lis)) state) (Mstate(lis (Mstate(caddr lis) state))))))) ;; need to finish
+      ((Mboolean (car(cdr lis)) state) (Mstate lis (Mstate(caddr lis) state)))
+      ((not (Mboolean (cadr lis) state)) state)))) ;; need to finish
 
 
 ;;return
@@ -137,7 +139,7 @@
   (lambda (lis state)
     (cond
       ((null? state) #f)
-      ((eq? (first-state-var state) (caadr lis)) #t)
+      ((eq? (first-state-var state) (cadr lis)) #t)
       (else (check-declare lis (next-s state ))))))
 
 (define add-bind
