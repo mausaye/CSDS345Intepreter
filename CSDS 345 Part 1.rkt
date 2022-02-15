@@ -43,6 +43,7 @@
       ((eq? expression 'false) #f)
       ((eq? (isVariable? expression state) #t) (Mvalue (retrieveValue expression state) state))  ;; if it's not a variable -> then retrieve its value ;;change this because it wasnt recursive  
       ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)state) (Mvalue (rightoperand expression)state)))
+      ((and (eq? (operator expression) '-) (null? (cddr expression))) (- 0 (Mvalue(leftoperand expression) state)))
       ((eq? (operator expression) '-) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       ((eq? (operator expression) '*) (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
       ((eq? (operator expression) '/) (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
@@ -74,17 +75,15 @@
       ((eq? if-cond 'true) #t)
       ((eq? if-cond 'false) #f)
       ((isVariable? if-cond state) (Mvalue (retrieveValue if-cond state) state))
-      ;((null? (cdr if-cond)) null)
-      ;((or (null? ((leftoperand if-cond)) (null? (rightoperand if-cond))) (error 'Mboolean "Invalid stmt"))
       ((eq? (operator if-cond) '<)   (< (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '>)   (> (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '<=)  (<= (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '>=)  (>= (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '==)  (eq? (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '!=)  (not (eq? (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))))
-      ((eq? (operator if-cond) '||)  (or (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
-      ((eq? (operator if-cond) '&&)  (and (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
-      ((eq? (operator if-cond) '!)   (not (Mvalue (leftoperand if-cond) state)))))) ;; what happen if it's a list like (!= (% y x) 3)
+      ((eq? (operator if-cond) '||)  (or (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state)))
+      ((eq? (operator if-cond) '&&)  (and (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state)))
+      ((eq? (operator if-cond) '!)   (not (Mboolean (leftoperand if-cond) state)))))) ;; what happen if it's a list like (!= (% y x) 3)
 
 
 ;; assign
@@ -92,7 +91,7 @@
   (lambda ( expression state)
     (cond
       ((null? (cdr expression)) (error 'assign "cant assign"))
-      ((eq? (check-declare expression state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mvalue(caddr expression) state) (removebind (cadr expression) state)))
+      ((eq? (check-declare expression state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mstate(caddr expression) state) (removebind (cadr expression) state)))
       (else (error 'assign "expression has not declared")))))
 
 ;; removebind 
@@ -101,7 +100,7 @@
     (cond
       [(null? state) '()]
       [(eq? name (first-state-var state)) (cdr state)]
-      [else (cons (car state) (removebind(cdr state)))])))
+      [else (cons (car state) (removebind name (cdr state)))])))
 
 
 ;;if-stmt caddr
@@ -110,6 +109,7 @@
     (cond
       ((null? lis) (error 'if-stmt "input expression is null"))
       ((Mboolean (car(cdr lis)) state) (Mstate (car(cdr (cdr lis))) state)) ;; check condition
+      ((null? (cdddr lis)) state)
       (else (Mstate (cadddr lis) state)))))
 
       
@@ -127,8 +127,8 @@
   (lambda (lis state)
     (cond
       ((null? (cdr lis)) lis)
-      ((eq?(Mboolean (cadr lis) state) #t)(return-add-bind (Mboolean (cadr lis) state) state))
-      ((eq? (Mboolean (cadr lis) state) #f) (return-add-bind (Mboolean (cadr lis) state) state))
+      ((Mboolean (cadr lis) state) (return-add-bind (Mboolean (cadr lis) state) state))
+      ((not (Mboolean (cadr lis) state)) (return-add-bind (Mboolean (cadr lis) state) state))
       (else (return-add-bind (Mvalue (cadr lis) state) state)))))
 
 
@@ -143,11 +143,19 @@
     
 ;; ********** helper ********* ;;
 (define check-declare
-  (lambda (lis state)
+  (lambda (name state)
     (cond
       ((null? state) #f)
-      ((eq? (first-state-var state) (cadr lis)) #t)
-      (else (check-declare lis (next-s state ))))))
+      ((eq? (first-state-var state) (cadr name)) #t )
+      (else (check-declare name (next-s state ))))))
+
+;(define check-declare 
+ ; (lambda (lis state)
+  ;  (cond
+   ;   ((null? state) #f)
+    ;  ((check-declare-helper(cadr lis) state) (check-declare(cddr lis) state))
+     ; (else (and (check-declare-helper(cadr lis) state) (Mstate (cddr lis) state))))))
+
 
 (define add-bind
   (lambda (lis value state)
