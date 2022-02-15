@@ -8,18 +8,24 @@
 (require "simpleParser.rkt")
 (require  "lex.rkt")
 
-;; take in the filename 
-(define intepreter
+(define interpret
   (lambda (filename)
-    (intepreterRule (parser filename) empty-lis)))
+    (cond
+      ((eq? (caar (interpreter filename)) 'return) (cadar (interpreter filename)))
+      (else (interpret (cdr (interpreter filename)))))))
 
-(define intepreterRule
+;; take in the filename 
+(define interpreter
+  (lambda (filename)
+    (interpreterRule (parser filename) empty-lis)))
+
+(define interpreterRule
   (lambda (expression state)
     (cond
     ((null? expression) '())
     ((number? expression) expression)
     ((null? (cdr expression)) (Mstate (the-head expression) state))
-    (else (intepreterRule (the-rest expression) (Mstate (the-head expression) state))))))
+    (else (interpreterRule (the-rest expression) (Mstate (the-head expression) state))))))
 
 ;; take in an expression and a state -> return the type updated of the expression 
 (define Mstate
@@ -31,17 +37,20 @@
     ((eq? (operator expression) 'while) (while-loop expression state)) ;; call while
     ((eq? (operator expression) 'return) (return expression state));; call return 
     ((eq? (operator expression) 'if) (if-stmt expression state))
-    (else (error 'Mstate "Not Valid Type")))))
+    (else (error "Invalid Type")))))
 
 ;; return the value for the expression 
 (define Mvalue
   (lambda (expression state)
     (cond
-      ((null? expression) (error 'Mvalue "enter value invalid"))
+      ((null? expression) ((error 'Mvalue "No assigned value")))
       ((number? expression) expression)
-      ((eq? expression 'true) #t)
-      ((eq? expression 'false) #f)
-      ((eq? (isVariable? expression state) #t) (Mvalue (retrieveValue expression state) state))  ;; if it's not a variable -> then retrieve its value ;;change this because it wasnt recursive  
+      ((or (eq? expression 'true) (eq? expression #t)) #t)
+      ((or (eq? expression 'false) (eq? expression #f)) #f) 
+      ((and (not (list? expression)) (not (check-declare expression state))) (error "expression not declare"))
+      ((eq? (Mboolean expression state) #t) (Mboolean expression state))
+      ((eq? (Mboolean expression state) #f) (Mboolean expression state))
+      ((eq? (isVariable? expression state) #t) (Mvalue (retrieveValue expression state) state));; if it's not a variable -> then retrieve its value ;;change this because it wasnt recursive  
       ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)state) (Mvalue (rightoperand expression)state)))
       ((and (eq? (operator expression) '-) (null? (cddr expression))) (- 0 (Mvalue(leftoperand expression) state)))
       ((eq? (operator expression) '-) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
@@ -73,7 +82,7 @@
       ((null? if-cond) (error 'Mboolean "Invalid Statement"))
       ((number? if-cond) (Mvalue if-cond state))
       ((eq? if-cond 'true) #t)
-      ((eq? if-cond 'false) #f)
+      ((eq? if-cond 'false)  #f)
       ((isVariable? if-cond state) (Mvalue (retrieveValue if-cond state) state))
       ((eq? (operator if-cond) '<)   (< (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '>)   (> (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
@@ -91,7 +100,7 @@
   (lambda ( expression state)
     (cond
       ((null? (cdr expression)) (error 'assign "cant assign"))
-      ((eq? (check-declare expression state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mstate(caddr expression) state) (removebind (cadr expression) state)))
+      ((eq? (check-declare (cadr expression) state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mvalue(caddr expression) state) (removebind (cadr expression) state)))
       (else (error 'assign "expression has not declared")))))
 
 ;; removebind 
@@ -127,8 +136,10 @@
   (lambda (lis state)
     (cond
       ((null? (cdr lis)) lis)
-      ((Mboolean (cadr lis) state) (return-add-bind (Mboolean (cadr lis) state) state))
-      ((not (Mboolean (cadr lis) state)) (return-add-bind (Mboolean (cadr lis) state) state))
+      ((eq? (Mvalue (car(cdr lis)) state) #t) (return-add-bind 'true state))
+      ((eq? (Mvalue (car(cdr lis)) state) #f) (return-add-bind 'false state))
+      ((Mboolean (cadr lis) state) (return-add-bind (Mvalue (cadr lis) state) state))
+      ((not (Mboolean (cadr lis) state)) (return-add-bind (Mvalue (cadr lis) state) state))
       (else (return-add-bind (Mvalue (cadr lis) state) state)))))
 
 
@@ -146,15 +157,16 @@
   (lambda (name state)
     (cond
       ((null? state) #f)
-      ((eq? (first-state-var state) (cadr name)) #t )
+      ((eq? (first-state-var state) name) #t )
       (else (check-declare name (next-s state ))))))
 
 ;(define check-declare 
  ; (lambda (lis state)
-  ;  (cond
+  ; (cond
    ;   ((null? state) #f)
-    ;  ((check-declare-helper(cadr lis) state) (check-declare(cddr lis) state))
-     ; (else (and (check-declare-helper(cadr lis) state) (Mstate (cddr lis) state))))))
+    ;  ((null? lis) #t)
+     ; ((null? (cdr lis)) #f)
+      ;(else (and (check-declare-helper(cadr lis) state) (check-declare (cdr lis) state))))))
 
 
 (define add-bind
@@ -164,7 +176,8 @@
  (define retrieveValue
    (lambda (name state)
      (cond
-       ((null? state) (error 'retrieveValue "Error"))
+       ((null? state) (error 'retrieveValue "Error: no values in state"))
+       ((and (eq? name (first-state-var state)) (null? (caddar state))) (error 'retrieveValue "Error: variable used before assignment"))
        ((eq? name (first-state-var state)) (car(cdr(cdr(car state)))))
        (else (retrieveValue name (next-s state))))))
 
@@ -172,6 +185,8 @@
 (define return-add-bind
   (lambda (value state)
     (cons (cons 'return (cons value '())) state)))
+
+
 
 
 ;;************ Abstraction ************** ;;
