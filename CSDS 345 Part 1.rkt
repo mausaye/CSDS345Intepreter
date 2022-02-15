@@ -18,7 +18,8 @@
     (cond
     ((null? expression) '())
     ((number? expression) expression)
-    (else (intepreterRule (the-rest expression) (Mstate (the-head expression)))))))
+    ((null? (cdr expression)) (Mstate (the-head expression) state))
+    (else (intepreterRule (the-rest expression) (Mstate (the-head expression) state))))))
 
 ;; take in an expression and a state -> return the type updated of the expression 
 (define Mstate
@@ -58,6 +59,7 @@
       ((null? lis) '()) ;;invalid expression cant be declared 
       ((eq? (check-declare lis state) #t) (error 'Mstate "Already declared"))
       ((and (eq? (check-declare lis state) #f) (null? (cddr lis))) (add-bind lis null state))
+      ;((eq? (check-declare lis state) #f) (add-bind lis (Mboolean (caddr lis) state) state))
       ((eq? (check-declare lis state) #f)  (add-bind lis (Mvalue (caddr lis) state) state))
       (else (error 'declare "No Value")))))
 
@@ -68,7 +70,12 @@
   (lambda (if-cond state)
     (cond 
       ((null? if-cond) (error 'Mboolean "Invalid Statement"))
-      ((or (null? (leftoperand if-cond)) (null? (rightoperand if-cond))) (error 'Mboolean "Invalid stmt"))
+      ((number? if-cond) (Mvalue if-cond state))
+      ((eq? if-cond 'true) #t)
+      ((eq? if-cond 'false) #f)
+      ((isVariable? if-cond state) (Mvalue (retrieveValue if-cond state) state))
+      ;((null? (cdr if-cond)) null)
+      ;((or (null? ((leftoperand if-cond)) (null? (rightoperand if-cond))) (error 'Mboolean "Invalid stmt"))
       ((eq? (operator if-cond) '<)   (< (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '>)   (> (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '<=)  (<= (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))
@@ -103,7 +110,7 @@
     (cond
       ((null? lis) (error 'if-stmt "input expression is null"))
       ((Mboolean (car(cdr lis)) state) (Mstate (car(cdr (cdr lis))) state)) ;; check condition
-      (else (if-stmt (cadddr lis) state)))))
+      (else (Mstate (cadddr lis) state)))))
 
       
 ;; while-loop
@@ -120,8 +127,8 @@
   (lambda (lis state)
     (cond
       ((null? (cdr lis)) lis)
-      ((eq? (Mboolean (cadr lis) state) #t) (return-add-bind #t state))
-      ((eq? (Mboolean (cadr lis) state) #f) (return-add-bind #f state))
+      ((eq?(Mboolean (cadr lis) state) #t)(return-add-bind (Mboolean (cadr lis) state) state))
+      ((eq? (Mboolean (cadr lis) state) #f) (return-add-bind (Mboolean (cadr lis) state) state))
       (else (return-add-bind (Mvalue (cadr lis) state) state)))))
 
 
