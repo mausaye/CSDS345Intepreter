@@ -67,8 +67,8 @@
   (lambda (lis state)
     (cond
       ((null? lis) '()) ;;invalid expression cant be declared 
-      ((eq? (check-declare lis state) #t) (error 'Mstate "Already declared"))
-      ((and (eq? (check-declare lis state) #f) (null? (cddr lis))) (add-bind lis null state))
+      ((eq? (check-declare (cadr lis) state) #t) (error 'Mstate "Already declared"))
+      ((and (eq? (check-declare (cadr lis) state) #f) (null? (cddr lis))) (add-bind lis null state))
       ;((eq? (check-declare lis state) #f) (add-bind lis (Mboolean (caddr lis) state) state))
       ((eq? (check-declare lis state) #f)  (add-bind lis (Mvalue (caddr lis) state) state))
       (else (error 'declare "No Value")))))
