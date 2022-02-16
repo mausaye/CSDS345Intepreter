@@ -11,8 +11,8 @@
 (define interpret
   (lambda (filename)
     (cond
-      ((eq? (caar (interpreter filename)) 'return) (cadar (interpreter filename)))
-      (else (interpret (cdr (interpreter filename)))))))
+      ((eq? (caar (interpreter filename)) 'return) (cadar (interpreter filename))) ; cadar is return vaue and caar is the-state
+      (else (interpret (the-rest (interpreter filename)))))))
 
 ;; take in the filename 
 (define interpreter
@@ -24,7 +24,7 @@
     (cond
     ((null? expression) '())
     ((number? expression) expression)
-    ((null? (cdr expression)) (Mstate (the-head expression) state))
+    ((null? (the-rest expression)) (Mstate (the-head expression) state))
     (else (interpreterRule (the-rest expression) (Mstate (the-head expression) state))))))
 
 ;; take in an expression and a state -> return the type updated of the expression 
@@ -67,7 +67,7 @@
   (lambda (lis state)
     (cond
       ((null? lis) '()) ;;invalid expression cant be declared 
-      ((eq? (check-declare (cadr lis) state) #t) (error 'Mstate "Already declared"))
+      ((eq? (check-declare (cadr lis) state) #t) (error 'Mstate "Already declared")) ; 
       ((and (eq? (check-declare (cadr lis) state) #f) (null? (cddr lis))) (add-bind lis null state))
       ;((eq? (check-declare lis state) #f) (add-bind lis (Mboolean (caddr lis) state) state))
       ((eq? (check-declare lis state) #f)  (add-bind lis (Mvalue (caddr lis) state) state))
@@ -100,7 +100,7 @@
   (lambda ( expression state)
     (cond
       ((null? (cdr expression)) (error 'assign "cant assign"))
-      ((eq? (check-declare (cadr expression) state) #t) (add-bind(cons 'var (cons (cadr expression) '())) (Mvalue(caddr expression) state) (removebind (cadr expression) state)))
+      ((eq? (check-declare (varName expression) state) #t) (add-bind(cons 'var (cons (varName expression) '())) (Mvalue(the-value expression) state) (removebind (varName expression) state)))
       (else (error 'assign "expression has not declared")))))
 
 ;; removebind 
@@ -108,8 +108,8 @@
   (lambda (name state)
     (cond
       [(null? state) '()]
-      [(eq? name (first-state-var state)) (cdr state)]
-      [else (cons (car state) (removebind name (cdr state)))])))
+      [(eq? name (first-state-var state)) (the-rest state)]
+      [else (cons (the-head state) (removebind name (the-rest state)))])))
 
 
 ;;if-stmt caddr
@@ -117,9 +117,9 @@
   (lambda (lis state)
     (cond
       ((null? lis) (error 'if-stmt "input expression is null"))
-      ((Mboolean (car(cdr lis)) state) (Mstate (car(cdr (cdr lis))) state)) ;; check condition
-      ((null? (cdddr lis)) state)
-      (else (Mstate (cadddr lis) state)))))
+      ((Mboolean (cond-stmt lis) state) (Mstate (stmt-one lis) state)) ;; check condition
+      ((null? (else-stmt lis)) state)
+      (else (Mstate (else-if-stmt lis) state)))))
 
       
 ;; while-loop
@@ -127,20 +127,20 @@
   (lambda (lis state)
     (cond
       ((null? lis) (error 'while-loop "invalid while-loop"))
-      ((Mboolean (car(cdr lis)) state) (Mstate lis (Mstate(caddr lis) state)))
-      ((not (Mboolean (cadr lis) state)) state)))) ;; need to finish
+      ((Mboolean (cond-stmt lis) state) (Mstate lis (Mstate(the-value lis) state)))
+      ((not (Mboolean (cond-stmt lis) state)) state)))) ;; need to finish
 
 
 ;;return
 (define return
   (lambda (lis state)
     (cond
-      ((null? (cdr lis)) lis)
-      ((eq? (Mvalue (car(cdr lis)) state) #t) (return-add-bind 'true state))
-      ((eq? (Mvalue (car(cdr lis)) state) #f) (return-add-bind 'false state))
-      ((Mboolean (cadr lis) state) (return-add-bind (Mvalue (cadr lis) state) state))
-      ((not (Mboolean (cadr lis) state)) (return-add-bind (Mvalue (cadr lis) state) state))
-      (else (return-add-bind (Mvalue (cadr lis) state) state)))))
+      ((null? (the-rest lis)) lis)
+      ((eq? (Mvalue (cond-stmt lis) state) #t) (return-add-bind 'true state))
+      ((eq? (Mvalue (cond-stmt lis) state) #f) (return-add-bind 'false state))
+      ((Mboolean (cond-stmt lis) state) (return-add-bind (Mvalue (cond-stmt lis) state) state))
+      ((not (Mboolean (cond-stmt lis) state)) (return-add-bind (Mvalue (cond-stmt lis) state) state))
+      (else (return-add-bind (Mvalue (cond-stmt lis) state) state)))))
 
 
 
@@ -171,14 +171,14 @@
 
 (define add-bind
   (lambda (lis value state)
-    (cons (append (cons (car lis) (cons (cadr lis) '())) (cons value '())) state)))  ;; format the input - name type value
+    (cons (append (cons (the-head lis) (cons (varName lis) '())) (cons value '())) state)))  ;; format the input - name type value
 
  (define retrieveValue
    (lambda (name state)
      (cond
        ((null? state) (error 'retrieveValue "Error: no values in state"))
-       ((and (eq? name (first-state-var state)) (null? (caddar state))) (error 'retrieveValue "Error: variable used before assignment"))
-       ((eq? name (first-state-var state)) (car(cdr(cdr(car state)))))
+       ((and (eq? name (first-state-var state)) (null? (state-value state))) (error 'retrieveValue "Error: variable used before assignment"))
+       ((eq? name (first-state-var state)) (state-value state))
        (else (retrieveValue name (next-s state))))))
 
 
@@ -199,6 +199,10 @@
     (cdr state)))
 
 (define leftoperand cadr)
+(define varName cadr)
+(define the-value caddr)
+(define state-value caddar)
+(define cond-stmt cadr)
 
 (define rightoperand caddr)
 
@@ -229,9 +233,9 @@
   (lambda (lis)
     (caddr (lis))))
 
-(define second-statement
-  (lambda (lis)
-    (car(cddr(lis)))))
+(define stmt-one caddr)
+(define else-stmt cdddr)
+(define else-if-stmt cadddr)
 
 
     
