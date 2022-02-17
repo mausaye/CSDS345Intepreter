@@ -1,9 +1,12 @@
 #lang racket
-;;;;CSDS 345
-;;;; Quyen Huynh
-;;;; Tammy Lin
-;;;; Elizabeth Waters
-;;;; Part 1 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                            ;
+; Quyen Huynh                                ;
+; Tammy Lin                                  ;
+; Elizabeth Waters                           ; 
+; CSDS 345 Interpreter Part 1                ;
+;                                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (require "simpleParser.rkt")
 (require  "lex.rkt")
@@ -123,7 +126,6 @@
       ((eq? (operator if-cond) '&&)  (and (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '!)   (not (Mboolean (leftoperand if-cond) state)))))) 
 
-
 ;;
 ; assign: (expression: the assign expression, state: the current state of the program)
 ; assigns the variable to the associated value.
@@ -149,7 +151,6 @@
       [(null? state) '()]
       [(eq? name (first-state-var state)) (the-rest state)]  ;; checks if the variable is present if so, remove from state
       [else (cons (the-head state) (removebind name (the-rest state)))])))
-
 
 ;;
 ; if-stmt: (lis: the if expression, state: the state of the program)
@@ -196,6 +197,10 @@
 
 
 ;; ********** Helper Functions ********* ;;
+
+;;
+; Checks if a variable has been declared in a state given a variable name and a state.
+;;
 (define check-declare
   (lambda (name state)
     (cond
@@ -203,10 +208,16 @@
       ((eq? (first-state-var state) name) #t )
       (else (check-declare name (next-s state ))))))
 
+;;
+; Adds a binding to the state in the format (type name value)
+;;
 (define add-bind
   (lambda (lis value state)
     (cons (append (cons (the-head lis) (cons (varName lis) '())) (cons value '())) state)))  ;; format the input - name type value
 
+;;
+; Retrieves a value of a variable in a state given the name and the state.
+;;
  (define retrieveValue
    (lambda (name state)
      (cond
@@ -215,13 +226,12 @@
        ((eq? name (first-state-var state)) (state-value state))
        (else (retrieveValue name (next-s state))))))
 
-
+;;
+; Adds a binding for the return statement. Form: (return value)
+;;
 (define return-add-bind
   (lambda (value state)
     (cons (cons 'return (cons value '())) state)))
-
-
-
 
 ;;************ Abstraction ************** ;;
 
@@ -250,8 +260,9 @@
 ; input: (type name value)
 ;;
 (define the-value caddr)
+
 ;;
-; 
+; The value of the state input: (type name value)
 ;;
 (define state-value caddar)
 
@@ -301,8 +312,6 @@
   (lambda (state)
     (cadr (car state))))
 
-(define the-hhead cadr) ;; the front of the front of the state
-
 ;;
 ; isVariable?: (name: the name of the variable, state: the current state of the program)
 ; Checks if a variable has been declared in the state.
@@ -314,10 +323,6 @@
       ((eq? name (first-state-var state)) #t)
       (else (isVariable? name (next-s state))))))
 
-
-(define first-statement
-  (lambda (lis)
-    (caddr (lis))))
     
 ;; the first statement in the if-statement
 (define stmt-one caddr)
@@ -327,7 +332,3 @@
 
 ;; the else-if in the if-statement
 (define else-if-stmt cadddr)
-
-
-    
-
