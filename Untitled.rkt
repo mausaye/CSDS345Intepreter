@@ -1,4 +1,5 @@
 #lang racket
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                                            ;
 ; Quyen Huynh                                ;
@@ -23,14 +24,14 @@
       ((eq? (caar (interpreter filename)) 'return) (cadar (interpreter filename))) ;; retrieves the element associated with the return in the state
       (else (interpret (cdr (interpreter filename))))))) ;; finds the 'return atom
 
-
 ;;
 ; interpreter: (file name)
 ; take in the filename and returns the state of the program after the code from the file is executed
 ;;
 (define interpreter
   (lambda (filename)
-    (interpreterRule (parser filename) '(()) )))
+    (interpreterRule (parser filename) empty-lis)))
+
 
 ;;
 ; interpreterRule: (expression: parsed code, state: the state of the program)
@@ -38,38 +39,26 @@
 ;;
 (define interpreterRule
   (lambda (expression state)
-    (call/cc
-     (lambda (return)
-       (cond
-         ((null? expression) '()) ;; the expression is empty, thus nothing to add to state
-         ((number? expression) expression) ;; expression is a number, return the number
-         ((null? (the-rest expression)) (Mstate (the-head expression) state return (lambda (cont) cont)
-                                                                                   (lambda (break) break)
-                                                                                   (lambda (throw) throw))) ;;(new added) only traversed on the first component since there is no other expression
-         (else (interpreterRule (the-rest expression) (Mstate (the-head expression) state return (lambda (cont) cont)
-                                                                                                 (lambda (break) break)
-                                                                                                 (lambda (throw) throw))))))))) ;; (new added) traversed on the first list and the remaining lists
+    (cond
+    ((null? expression) '()) ;; the expression is empty, thus nothing to add to state
+    ((number? expression) expression) ;; expression is a number, return the number
+    ((null? (the-rest expression)) (Mstate (the-head expression) state)) ;; only traversed on the first component since there is no other expression
+    (else (interpreterRule (the-rest expression) (Mstate (the-head expression) state)))))) ;; traversed on the first list and the remaining lists
+
 ;;
 ; Mstate: (expression: parsed code segment beginning with a keyword, state: current state of the program)
 ; Take in an expression and a state, and returns the state of the program after the
 ; code segment has run.
 ;;
 (define Mstate
-  (lambda (expression state return continue break throw)
+  (lambda (expression state)
     (cond
     ((null? expression) expression)
-    ((eq? (operator expression) 'begin) (beginScope (cdr expression) state return continue break throw )) ;; (new added) 
-   ; ((eq? (operator expression) 'try) (try expression state return continue break throw)) ;;(new added)
-   ; ((eq? (operator expression) 'catch) (catch expression state return continue break throw)) ;;(new added)
-   ; ((eq? (operator expression) 'finally) (finally expression state return continue break throw))
-    ((eq? (operator expression) 'continue) (continue state))
-   ; ((eq? (operator expression) 'throw) (throw expression state return continue break throw))
-    ((eq? (operator expression) 'break) (break (next-s state)))
     ((eq? (operator expression) 'var) (declare expression state))
-    ((eq? (operator expression) '=) (assign state (cadr expression) (Mvalue (caddr expression) state)))
-    ((eq? (operator expression) 'while) (while-loop expression state return continue break throw)) 
-    ((eq? (operator expression) 'return) (return (Mvalue (cadr expression) state)))
-    ((eq? (operator expression) 'if) (if-stmt expression state return continue break throw))
+    ((eq? (operator expression) '=) (assign expression state))
+    ((eq? (operator expression) 'while) (while-loop expression state)) 
+    ((eq? (operator expression) 'return) (return expression state))
+    ((eq? (operator expression) 'if) (if-stmt expression state))
     (else (error "Invalid Type")))))
 
 ;;
@@ -90,7 +79,7 @@
       ((and (not (list? expression)) (not (check-declare expression state))) (error "expression not declare")) ;; checks if it is a variable that has not been declared
       ((eq? (Mboolean expression state) #t) (Mboolean expression state)) ;; computes a boolean expression corresponding to true
       ((eq? (Mboolean expression state) #f) (Mboolean expression state)) ;; computes a boolean expression corresponding to false
-      ((eq? (check-declare expression state) #t) (Mvalue (retrieveValue state expression) state)) ;; retrieves the value of a variable   
+      ((eq? (isVariable? expression state) #t) (Mvalue (retrieveValue expression state) state)) ;; retrieves the value of a variable   
       ((eq? (operator expression) '+) (+ (Mvalue (leftoperand expression)state) (Mvalue (rightoperand expression)state))) 
       ((and (eq? (operator expression) '-) (null? (cddr expression))) (- 0 (Mvalue(leftoperand expression) state)))  
       ((eq? (operator expression) '-) (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))  
@@ -113,10 +102,9 @@
     (cond
       ((null? lis) '()) ;; invalid expression cant be declared 
       ((eq? (check-declare (cadr lis) state) #t) (error 'Mstate "Variable already declared")) ;; variable already declared 
-      ((and (eq? (check-declare (cadr lis) state) #f) (null? (cddr lis))) (add-bind state (cadr lis) null)) ;; declaring a variable to a null value
-      ((eq? (check-declare lis state) #f)  (add-bind state (cadr lis) (Mvalue (caddr lis) state))) ;; declaring a variable to a value
+      ((and (eq? (check-declare (cadr lis) state) #f) (null? (cddr lis))) (add-bind lis null state)) ;; declaring a variable to a null value
+      ((eq? (check-declare lis state) #f)  (add-bind lis (Mvalue (caddr lis) state) state)) ;; declaring a variable to a value
       (else (error 'declare "No Value")))))
-
 
 ;;
 ; Mboolean: (if-cond: the condition to be evaulated, state: the current state of the program)
@@ -129,7 +117,7 @@
       ((number? if-cond) (Mvalue if-cond state))
       ((eq? if-cond 'true) #t) ;; converts the atom true to the value #t
       ((eq? if-cond 'false)  #f) ;; converts the atom false to the value #f
-      ((check-declare if-cond state) (Mvalue (retrieveValue state if-cond) state)) ;; retrieves the boolean variable value
+      ((isVariable? if-cond state) (Mvalue (retrieveValue if-cond state) state)) ;; retrieves the boolean variable value
       ((eq? (operator if-cond) '<)   (< (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
       ((eq? (operator if-cond) '>)   (> (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
       ((eq? (operator if-cond) '<=)  (<= (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
@@ -140,7 +128,6 @@
       ((eq? (operator if-cond) '&&)  (and (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state)))
       ((eq? (operator if-cond) '!)   (not (Mboolean (leftoperand if-cond) state)))))) 
 
-
 ;;
 ; assign: (expression: the assign expression, state: the current state of the program)
 ; assigns the variable to the associated value.
@@ -150,21 +137,22 @@
 ; (= x (+ y z)) -> x = y + z
 ;;
 (define assign
-  (lambda (state name new-value)
-    (begin
-      (cond 
-      ((null? new-value)  (error 'assign "No value given to assign"))
-      ((eq? (check-declare name state) #t) (set-box! (search-box name state) (list name new-value)))
-      (else (error 'assign "Expression has not declared")))
-      state)))
+  (lambda (expression state)
+    (cond
+      ((null? (cddr expression)) (error 'assign "No value given to assign")) ;; No value to be assigned
+      ((eq? (check-declare (varName expression) state) #t) (add-bind(cons 'var (cons (varName expression) '())) (Mvalue(the-value expression) state) (removebind (varName expression) state))) ;; Checking a variable declaration before assigning its value
+      (else (error 'assign "Expression has not declared")))))
 
-(define search-box
+;;
+; removebind: (name: name of the variable to remove, state: the state of the program)
+; Given a variable name, the bind in the state is removed
+;; 
+(define removebind
   (lambda (name state)
     (cond
-      ((null? state) #f)
-      ((list? (car state)) (or (search-box name (car state)) (search-box name (cdr state))))
-      ((and (box? (car state)) (eq? name (car (unbox (car state))))) (car state))
-      (else (search-box name (cdr state))))))
+      [(null? state) '()]
+      [(eq? name (first-state-var state)) (the-rest state)]  ;; checks if the variable is present if so, remove from state
+      [else (cons (the-head state) (removebind name (the-rest state)))])))
 
 ;;
 ; if-stmt: (lis: the if expression, state: the state of the program)
@@ -175,12 +163,12 @@
 ; (if (cond) (stmt1) (stmt2): if and else
 ;;
 (define if-stmt
-  (lambda (lis state return continue break throw)
+  (lambda (lis state)
     (cond
       ((null? lis) (error 'if-stmt "Input expression is null"))
-      ((Mboolean (cond-stmt lis) state) (Mstate (stmt-one lis) state return continue break throw))  ;; Check the condition and change the state if condition is true
+      ((Mboolean (cond-stmt lis) state) (Mstate (stmt-one lis) state))  ;; Check the condition and change the state if condition is true
       ((null? (else-stmt lis)) state) ;; Checks if the else statement exists
-      (else (Mstate (else-if-stmt lis) state return continue break throw))))) ;; Checks if the else if statement exists
+      (else (Mstate (else-if-stmt lis) state))))) ;; Checks if the else if statement exists
       
 ;;
 ; while-loop: (lis: the while expression, state: the current state of the program)
@@ -188,16 +176,12 @@
 ; while (cond) (stmt)
 ;;
 (define while-loop
-  (lambda (lis state return continue break throw )
+  (lambda (lis state)
     (cond
       ((null? lis) (error 'while-loop "invalid while-loop"))
-      ((Mboolean (cond-stmt lis) state) (Mstate lis (call/cc (lambda (cont) (Mstate (caddr lis) state return cont break throw))) return continue break throw ))
-      ((not (Mboolean (cond-stmt lis) state)) state))))
-
-;cond : cadr lis
-;body : caddr lis (begin
-
-                     
+      ((Mboolean (cond-stmt lis) state) (Mstate lis (Mstate(the-value lis) state)))
+      ((not (Mboolean (cond-stmt lis) state)) state)))) 
+      
 ;;
 ; return: (lis: return statement, state: current state of the program)
 ; Computes the return expression and adds the return value to the state
@@ -213,28 +197,8 @@
       ((not (Mboolean (cond-stmt lis) state)) (return-add-bind (Mvalue (cond-stmt lis) state) state))
       (else (return-add-bind (Mvalue (cond-stmt lis) state) state))))) ;; checks for arthemetic expressions
 
-  
-
-
-
-(define beginScope-helper 
-  (lambda (expression state return continue break throw)
-    (cond
-      ((null? expression)(next-s state))
-      (else (beginScope-helper (cdr expression) (Mstate (car expression) state return continue break throw) return continue break throw)))))
-
-(define beginScope 
-  (lambda (expression state return continue break throw)
-       (beginScope-helper expression (addlayer state) return continue break throw)))
 
 ;; ********** Helper Functions ********* ;;
-
-;;
-; add a layer on the top 
-;;
-(define addlayer
-  (lambda (state)
-    (cons '() state )))
 
 ;;
 ; Checks if a variable has been declared in a state given a variable name and a state.
@@ -243,46 +207,26 @@
   (lambda (name state)
     (cond
       ((null? state) #f)
-      ((list? (car state)) (or (check-declare name (car state)) (check-declare name (cdr state))))
-      ((and (box? (car state)) (eq? (car (unbox (car state))) name) #t))
-      (else (check-declare name (next-s state))))))
+      ((eq? (first-state-var state) name) #t )
+      (else (check-declare name (next-s state ))))))
 
 ;;
 ; Adds a binding to the state in the format (type name value)
 ;;
-(define add-bind1
-  (lambda (state name value)
-    (cond
-      ((null? state) (list (box (list name value))))
-      (else (cons (cons (box (list name value)) (list (car state))) (cdr state))))))
-
 (define add-bind
-  (lambda (state name value)
-    (cond
-      ((null? state) (list (box (list name value))))
-      ((and (not (box? (car state))) (car state)(list? (car state))) (cons (add-bind (car state) name value) (cdr state)))
-      (else (cons (box (list name value)) state)))))
-
+  (lambda (lis value state)
+    (cons (append (cons (the-head lis) (cons (varName lis) '())) (cons value '())) state)))  ;; format the input - name type value
 
 ;;
 ; Retrieves a value of a variable in a state given the name and the state.
 ;;
  (define retrieveValue
-  (lambda (state name)
-    (cond
-      ((null? state) #f)
-      ((list? (car state)) (or (retrieveValue (car state) name) (retrieveValue (cdr state) name)))
-      ((and (box? (car state)) (eq? (car (unbox (car state))) name)) (cadr (unbox (car state))))
-      (else (retrieveValue (cdr state) name)))))
-
-;(define setValue
- ; (lambda (state name new-value)
-   ; (cond
-    ;  ((null? state) #f)
-     ; ((list? (car state)) (or (setValue (car state) name new-value) (setValue (cdr state) name new-value)))
-     ; ((and (box? (car state)) (eq? (car (unbox (car state))) name)) (set-box! (car state) (list name new-value)))
-     ; (else (setValue (cdr state) name new-value)))))
-
+   (lambda (name state)
+     (cond
+       ((null? state) (error 'retrieveValue "Error: no values in state"))
+       ((and (eq? name (first-state-var state)) (null? (state-value state))) (error 'retrieveValue "Error: variable used before assignment"))
+       ((eq? name (first-state-var state)) (state-value state))
+       (else (retrieveValue name (next-s state))))))
 
 ;;
 ; Adds a binding for the return statement. Form: (return value)
@@ -361,6 +305,25 @@
 (define input-name
   (lambda (lis)
           (car(cdr lis))))
+
+;;
+; first-state-var
+; Retrieves the first variable in the state.
+;;
+(define first-state-var
+  (lambda (state)
+    (cadr (car state))))
+
+;;
+; isVariable?: (name: the name of the variable, state: the current state of the program)
+; Checks if a variable has been declared in the state.
+;;
+(define isVariable?
+  (lambda (name state)
+    (cond
+      ((null? state) #f)
+      ((eq? name (first-state-var state)) #t)
+      (else (isVariable? name (next-s state))))))
 
     
 ;; the first statement in the if-statement
