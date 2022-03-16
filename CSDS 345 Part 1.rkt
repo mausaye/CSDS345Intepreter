@@ -96,10 +96,14 @@
 
 (define try
   (lambda (exp state return continue break throw)
+
+     (define throwval (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))
     (cond
 
+     
 
-      ((number? (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow)))) (finally (cadddr exp) (catch (caddr (catch-statement exp)) (add-bind state (catch-variable (catch-statement exp)) (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))
+
+      ((number? throwval) (finally (cadddr exp) (catch (caddr (catch-statement exp)) (add-bind state (catch-variable (catch-statement exp)) throwval)
                                           return continue break throw) return continue break throw))
       (else (finally (cadddr exp) state return continue break throw)))))
 
@@ -119,7 +123,10 @@
 ;; i want catch Mstate its body     
 (define catch
   (lambda (catch-exp state return continue break throw)
-    (try-helper (cdr catch-exp) (Mstate (car catch-exp) state return continue break throw) return continue break throw)))
+    ;(cond
+     ;((number? (call/cc (lambda (newthrow) (try-helper catch-exp) state return continue break newthrow)))) 
+    ; (else
+      (try-helper (cdr catch-exp) (Mstate (car catch-exp) state return continue break throw) return continue break throw)))
     
  (define finally
   (lambda (finally-statement state return continue break throw)
