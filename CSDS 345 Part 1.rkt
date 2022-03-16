@@ -43,7 +43,7 @@
        (cond
          ((null? expression) '()) ;; the expression is empty, thus nothing to add to state
          ((number? expression) expression) ;; expression is a number, return the number
-         ((and (eq? (car expression) 'throw) (not (catchExists? expression))) (error "invalid throw"))
+         ;((and (eq? (car expression) 'throw) (not (catchExists? expression))) (error "invalid throw"))
          ((null? (the-rest expression)) (Mstate (the-head expression) state return (lambda (cont) cont)
                                                                                    (lambda (break) break)
                                                                                    (lambda (throw) throw))) ;;(new added) only traversed on the first component since there is no other expression
