@@ -43,6 +43,7 @@
        (cond
          ((null? expression) '()) ;; the expression is empty, thus nothing to add to state
          ((number? expression) expression) ;; expression is a number, return the number
+         ((and (eq? (car expression) 'throw) (not (catchExists? expression))) (error "invalid throw"))
          ((null? (the-rest expression)) (Mstate (the-head expression) state return (lambda (cont) cont)
                                                                                    (lambda (break) break)
                                                                                    (lambda (throw) throw))) ;;(new added) only traversed on the first component since there is no other expression
@@ -72,6 +73,13 @@
     ((eq? (operator expression) 'if) (if-stmt expression state return continue break throw))
     (else (error "Invalid Type")))))
 
+(define catchExists?
+  (lambda (expression)
+    (cond
+    ((null? expression) #f)
+    ((list? (car expression)) (or (catchExists? (car expression)) (catchExists? (cdr expression))))
+    ((eq? (car expression) 'catch) #t)
+    (else (catchExists? (cdr expression))))))
 
 ; caddr exp : catch
 ; cadr exp : try body (does not include try word)
@@ -105,6 +113,7 @@
 
       ((number? throwval) (finally (cadddr exp) (catch (caddr (catch-statement exp)) (add-bind state (catch-variable (catch-statement exp)) throwval)
                                           return continue break throw) return continue break throw))
+      
       (else (finally (cadddr exp) state return continue break throw)))))
 
 
