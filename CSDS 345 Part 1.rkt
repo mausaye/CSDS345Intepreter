@@ -97,29 +97,17 @@
 (define try
   (lambda (exp state return continue break throw)
     (cond
-      ((null? (try-body exp)) (try-helper (finally-statement exp) state return continue break throw));; go to finally
-      ;; try and catch and finally with valid throw
-
-      ((and (not (number? (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))) (not (null? (finally-statement exp)))) 
-                                       (finally (cadr (cadddr exp)) state return continue break throw))
 
 
-      ;;no valid throw and no finally
-     ; ((not (number? (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))) state)
-      ;; try and catch (NO finally)
-      ((null? (finally-statement exp)) (catch (caddr (catch-statement exp)) (add-bind state (catch-variable (catch-statement exp)) (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))
-                                          return continue break throw))  ;;(add-bind state (newthrow)(catch-variable (catch-statement exp))) return continue break newthrow))))   ;run try body look for throw keyword (if throw then go to cathc)
-      ;; try and finally (No catch)
-      ((null? (catch-statement exp)) (Mstate (finally-statement exp)
-                                              (Mstate (try-body exp) state return continue break throw) return continue break throw))
-      ;; try catch finally
-      (else (finally (cadr (cadddr exp))(catch (caddr (catch-statement exp)) (add-bind state (catch-variable (catch-statement exp)) (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))
-                                          return continue break throw) return continue break throw)))))
+      ((number? (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow)))) (finally (cadddr exp) (catch (caddr (catch-statement exp)) (add-bind state (catch-variable (catch-statement exp)) (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))
+                                          return continue break throw) return continue break throw))
+      (else (finally (cadddr exp) state return continue break throw)))))
 
 
-(define mythrow
-  (lambda (catch-exp state)
-    (Mstate (cdr catch-exp) (add-bind state (catch-variable catch-exp))))) 
+
+;(define mythrow
+ ; (lambda (catch-exp state)
+  ;  (Mstate (cdr catch-exp) (add-bind state (catch-variable catch-exp))))) 
 ;((= x 20) (if (> x 10) (throw 5)) (= x (+ x 5)))
 ;; executes the try body and looks for throw
 (define try-helper
@@ -135,7 +123,10 @@
     
  (define finally
   (lambda (finally-statement state return continue break throw)
-    (try-helper finally-statement state return continue break throw)))
+    (cond
+      ((null? finally-statement) state)
+      ((eq? (car finally-statement) 'finally) (finally (cadr finally-statement) state return continue break throw))
+      (else (try-helper finally-statement state return continue break throw)))))
       
       
        
