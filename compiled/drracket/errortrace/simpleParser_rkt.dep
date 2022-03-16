@@ -1,1 +1,1 @@
-("8.3" ta6osx ("e0e83ce077a7725b80d5d28c796e973faa4fa1dd" . "d39c08201541a4dc40644c2de99d68a318249d4e") #"/Users/quyenhuynh/Desktop/345/lex.rkt" (collects #"errortrace" #"errortrace-key.rkt") (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt"))
+("8.3" ta6nt ("e0e83ce077a7725b80d5d28c796e973faa4fa1dd" . "0df107628139dd2f5de973cee0a77fce07d3f54e") #"C:\\Users\\Elizabeth Waters\\CSDS345Intepreter\\lex.rkt" (collects #"errortrace" #"errortrace-key.rkt") (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt"))
