@@ -43,13 +43,12 @@
        (cond
          ((null? expression) '()) ;; the expression is empty, thus nothing to add to state
          ((number? expression) expression) ;; expression is a number, return the number
-         ;((and (eq? (car expression) 'throw) (not (catchExists? expression))) (error "invalid throw"))
          ((null? (the-rest expression)) (Mstate (the-head expression) state return (lambda (cont) cont)
                                                                                    (lambda (break) break)
                                                                                    (lambda (throw) throw))) ;;(new added) only traversed on the first component since there is no other expression
          (else (interpreterRule (the-rest expression) (Mstate (the-head expression) state return (lambda (cont) cont)
                                                                                                  (lambda (break) break)
-                                                                                                 (lambda (throw) (error "invalid throw")))))))))) ;; (new added) traversed on the first list and the remaining lists
+                                                                                                 (lambda (throw) throw))))))))) ;; (new added) traversed on the first list and the remaining lists
 ;;
 ; Mstate: (expression: parsed code segment beginning with a keyword, state: current state of the program)
 ; Take in an expression and a state, and returns the state of the program after the
@@ -59,12 +58,12 @@
   (lambda (expression state return continue break throw)
     (cond
     ((null? expression) expression)
-    ((eq? (operator expression) 'begin) (beginScope (cdr expression) state return continue break throw))
-    ((eq? (operator expression) 'try) (try expression state return continue break throw)) 
-    ((eq? (operator expression) 'catch) (catch expression state return continue break throw)) 
-    ;((eq? (operator expression) 'finally) (finally expression state return continue break throw))
-    ((eq? (operator expression) 'continue) (continue (cdr state)))
-    ((eq? (operator expression) 'throw) (throw (Mvalue (cadr expression) state)))
+    ((eq? (operator expression) 'begin) (beginScope (cdr expression) state return continue break throw )) ;; (new added) 
+   ; ((eq? (operator expression) 'try) (try expression state return continue break throw)) ;;(new added)
+   ; ((eq? (operator expression) 'catch) (catch expression state return continue break throw)) ;;(new added)
+   ; ((eq? (operator expression) 'finally) (finally expression state return continue break throw))
+    ((eq? (operator expression) 'continue) (continue state))
+   ; ((eq? (operator expression) 'throw) (throw expression state return continue break throw))
     ((eq? (operator expression) 'break) (break (next-s state)))
     ((eq? (operator expression) 'var) (declare expression state))
     ((eq? (operator expression) '=) (assign state (cadr expression) (Mvalue (caddr expression) state)))
@@ -72,92 +71,6 @@
     ((eq? (operator expression) 'return) (return (Mvalue (cadr expression) state)))
     ((eq? (operator expression) 'if) (if-stmt expression state return continue break throw))
     (else (error "Invalid Type")))))
-
-(define catchExists?
-  (lambda (expression)
-    (cond
-    ((null? expression) #f)
-    ((list? (car expression)) (or (catchExists? (car expression)) (catchExists? (cdr expression))))
-    ((eq? (car expression) 'catch) #t)
-    (else (catchExists? (cdr expression))))))
-
-; caddr exp : catch
-; cadr exp : try body (does not include try word)
-; cadddr exp: finally
-
-(define finally-statement
-  (lambda (expression)
-    (cadddr expression)))
-
-(define catch-statement
-  (lambda (expression)
-    (caddr expression)))
-
-(define try-body
-  (lambda (expression)
-    (cadr expression)))
-
-(define catch-variable
-  (lambda (expression)
-    (caadr expression)))
-        
-
-(define try
-  (lambda (exp state return continue break throw)
-
-     (define throwval (call/cc (lambda (newthrow) (try-helper (try-body exp) state return continue break newthrow))))
-    (cond
-
-     
-
-
-      ((number? throwval) (finally (cadddr exp) (catch (caddr (catch-statement exp)) (add-bind state (catch-variable (catch-statement exp)) throwval)
-                                          return continue break throw) return continue break throw))
-      
-      (else (finally (cadddr exp) state return continue break throw)))))
-
-
-
-;(define mythrow
- ; (lambda (catch-exp state)
-  ;  (Mstate (cdr catch-exp) (add-bind state (catch-variable catch-exp))))) 
-;((= x 20) (if (> x 10) (throw 5)) (= x (+ x 5)))
-;; executes the try body and looks for throw
-(define try-helper
-  (lambda (exp state return continue break throw)
-    (cond
-      ((null? exp) state)
-      (else (try-helper (cdr exp) (Mstate (car exp) state return continue break throw) return continue break throw)))))
-      
-;; i want catch Mstate its body     
-(define catch
-  (lambda (catch-exp state return continue break throw)
-    ;(cond
-     ;((number? (call/cc (lambda (newthrow) (try-helper catch-exp) state return continue break newthrow)))) 
-    ; (else
-      (try-helper (cdr catch-exp) (Mstate (car catch-exp) state return continue break throw) return continue break throw)))
-    
- (define finally
-  (lambda (finally-statement state return continue break throw)
-    (cond
-      ((null? finally-statement) state)
-      ((eq? (car finally-statement) 'finally) (finally (cadr finally-statement) state return continue break throw))
-      (else (try-helper finally-statement state return continue break throw)))))
-      
-      
-       
-       
-                          
-;input (sum-with-cut '(1 2 3 cut 4 except 5 6 end 7 8) 'invalid)
-;invalid should become a function
-(define sum-with-cut
-  (lambda (lis break)
-    (cond
-      ((null? lis) 0)
-      ((eq? (car lis) 'cut) (call/cc (lambda (k) (sum-with-cut (cdr lis) k)))) ;; k value break returns
-      ((eq? (car lis) 'end) (break (sum-with-cut (cdr lis) (lambda (v) v)))); 
-      ((eq? (car lis) 'except) (sum-with-cut (cdr lis) (lambda (v) (break (+ (cadr lis) v))))) ;; v: state of sum before cut
-      ((+ (car lis) (sum-with-cut (cdr lis) break))))))
 
 ;;
 ; Mvalue: (expression: the parsed code segment, state: the current state of the program)
@@ -275,12 +188,15 @@
 ; while (cond) (stmt)
 ;;
 (define while-loop
-  (lambda (lis state return continue break throw)
-    (call/cc (lambda (newbreak)
-               (cond
-                 ((null? lis) (error 'while-loop "invalid while-loop"))
-                 ((Mboolean (cond-stmt lis) state) (Mstate lis (call/cc (lambda (cont) (Mstate (caddr lis) state return cont newbreak throw))) return continue newbreak throw))
-                 ((not (Mboolean (cond-stmt lis) state)) state))))))
+  (lambda (lis state return continue break throw )
+    (cond
+      ((null? lis) (error 'while-loop "invalid while-loop"))
+      ((Mboolean (cond-stmt lis) state) (Mstate lis (call/cc (lambda (cont) (Mstate (caddr lis) state return cont break throw))) return continue break throw ))
+      ((not (Mboolean (cond-stmt lis) state)) state))))
+
+;cond : cadr lis
+;body : caddr lis (begin
+
                      
 ;;
 ; return: (lis: return statement, state: current state of the program)
@@ -296,6 +212,10 @@
       ((Mboolean (cond-stmt lis) state) (return-add-bind (Mvalue (cond-stmt lis) state) state)) ;; checks for boolean expressions
       ((not (Mboolean (cond-stmt lis) state)) (return-add-bind (Mvalue (cond-stmt lis) state) state))
       (else (return-add-bind (Mvalue (cond-stmt lis) state) state))))) ;; checks for arthemetic expressions
+
+  
+
+
 
 (define beginScope-helper 
   (lambda (expression state return continue break throw)
@@ -330,12 +250,19 @@
 ;;
 ; Adds a binding to the state in the format (type name value)
 ;;
+(define add-bind1
+  (lambda (state name value)
+    (cond
+      ((null? state) (list (box (list name value))))
+      (else (cons (cons (box (list name value)) (list (car state))) (cdr state))))))
+
 (define add-bind
   (lambda (state name value)
     (cond
       ((null? state) (list (box (list name value))))
       ((and (not (box? (car state))) (car state)(list? (car state))) (cons (add-bind (car state) name value) (cdr state)))
       (else (cons (box (list name value)) state)))))
+
 
 ;;
 ; Retrieves a value of a variable in a state given the name and the state.
