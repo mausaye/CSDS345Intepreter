@@ -4,11 +4,11 @@
 ; Quyen Huynh                                ;
 ; Tammy Lin                                  ;
 ; Elizabeth Waters                           ; 
-; CSDS 345 Interpreter Part 1                ;
+; CSDS 345 Interpreter Part 2              ;
 ;                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(require "simpleParser.rkt")
+(require "functionParser.rkt")
 (require  "lex.rkt")
 
 ;;
@@ -29,7 +29,8 @@
      (lambda (return)
        (cond
          ; The expression is empty, thus nothing to add to state
-         ((null? expression) empty-lis)
+         ((null? expression)(error "no main function found" ))
+         ((eq? (cadar expression) 'main) (interpret-main expression state return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))
          ; Expression is a number, return the number
          ((number? expression) expression)
          ; Only traversed on the first component since there is no other expression
@@ -37,7 +38,43 @@
                                                 (lambda (cont) cont) (lambda (break) break) (lambda (throw) throw)))
          ; Traversed on the first list and the remaining lists
          (else (interpreterRule (the-rest expression) (Mstate (the-head expression) state return
-                                                              (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")))))))))) 
+                                                              (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))))))))
+
+;(define find
+ ; (lambda (environment)
+  ;  ((null? environment) '())
+   ; ((eq? (car environment) 'main) (cddr environment))
+    ;(else (find 'main (cdr environment)))))
+
+(define interpret-main
+  (lambda (exp environment return continue break throw)
+    (cond
+      ((null? exp) environment)
+      ((interpret-stmts (car (cdddar exp)) environment return continue break throw)))))
+
+(define interpret-stmts
+  (lambda (exp state return continue break throw)
+    (cond
+      ((null? exp) state)
+      (else (interpret-stmts (the-rest exp) (Mstate (car exp) state return continue break throw) return continue break throw)))))
+ 
+(define add-closure-binding
+  (lambda (func environment)
+    (cond
+      [(null? (car (cdddr func))) environment]
+      ;cadr : function name caddr: formal params car cdddr: function body
+      [else (insert-global (box (list (cadr func) (caddr func) (caar (cdddr func)))) environment)])))
+
+(define insert-global
+  (lambda (binding environment)
+    (cond
+      [
+
+;(define interpret-function
+ ; (lambda (
+  
+
+;;outer layer interpretation
 
 ;;
 ; Mstate: (expression: parsed code segment beginning with a keyword, state: current state of the program)
@@ -59,6 +96,8 @@
     ((eq? (operator expression) 'while)        (while-loop expression state return continue break throw)) 
     ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
+    ((eq? (operator expression) 'function)     (add-closure-binding expression state))
+   ; ((eq? (operator expression) 'funcall)      ()
     (else (error "Invalid Type")))))
 
 
