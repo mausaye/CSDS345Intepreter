@@ -50,7 +50,7 @@
   (lambda (exp environment return continue break throw)
     (cond
       ((null? exp) environment)
-      ((interpret-stmts (car (cdddar exp)) environment return continue break throw)))))
+      ((interpret-stmts (car (cdddar exp)) (addlayer environment) return continue break throw)))))
 
 (define interpret-stmts
   (lambda (exp state return continue break throw)
@@ -58,21 +58,72 @@
       ((null? exp) state)
       (else (interpret-stmts (the-rest exp) (Mstate (car exp) state return continue break throw) return continue break throw)))))
  
-(define add-closure-binding
+(define add-closure-global
   (lambda (func environment)
     (cond
       [(null? (car (cdddr func))) environment]
       ;cadr : function name caddr: formal params car cdddr: function body
-      [else (insert-global (box (list (cadr func) (caddr func) (caar (cdddr func)))) environment)])))
+      [else (insert-global (box (list 'closure (cadr func) (caddr func) (caar (cdddr func))))  environment)])))
 
-(define insert-global
+(define insert-global; (() () )  
   (lambda (binding environment)
     (cond
-      [
+      ((null?  environment)  (list binding))
+      ((null? (car environment)) (cons (list binding) (cdr environment)))
+      ((and (list?(car environment)) (null? (cdr environment))) (list (cons binding (car environment))))
+      [else (cons (car environment)(insert-global binding (cdr environment)))])))
 
-;(define interpret-function
- ; (lambda (
-  
+
+(define closure-name
+  (lambda (closure)
+    (cadr closure)))
+
+(define closure-formal-param
+  (lambda (closure)
+    (caddr closure)))
+
+(define closure-body
+  (lambda (closure)
+    (cadddr closure)))
+
+(define retrieve-closure
+  (lambda (name environment)
+    (cond
+      ((null? environment) #f)
+      ((list? (car environment)) (or (retrieve-closure name (car environment)) (retrieve-closure name (cdr environment))))
+      ((and (box? (car environment)) (eq? name (closure-name (unbox (car environment))))) (unbox (car environment)))
+      (else (retrieve-closure name (cdr environment))))))
+
+(define atom?
+  (lambda (x)
+    (not (or (pair? x) (null? x)))))
+
+(define bind-formal-actual
+  (lambda (formal actual environment)
+    (cond
+      ((and (null? formal) (null? actual)) environment)
+      ((or (null? formal) (null? actual)) (error "mismatched number params"))
+      ((and (null? (cdr formal))(atom? actual)) (add-bind environment (car formal) (Mvalue actual environment)))
+      (else (bind-formal-actual (cdr formal) (cdr actual) (add-bind environment (car formal) (Mvalue (car actual) environment)))))))
+
+(define find-value
+  (lambda (params environment)
+    (cond
+      ((null? params) params)
+      ((atom? params)  (Mvalue params environment))
+      ((list? (car params)) (cons (Mvalue (car params) environment) (find-value (cdr params) environment)))
+      (else  (cons (find-value (car params) environment) (find-value (cdr params) environment))))))
+
+(define interpret-function
+  (lambda (name actual-params environment)
+    (call/cc
+     (lambda (func-return)
+       (cond
+         ((not (retrieve-closure name environment)) (error "function undefined"))
+         (else (beginScope (list (closure-body(retrieve-closure name environment))) (bind-formal-actual (closure-formal-param (retrieve-closure name environment)) (find-value actual-params environment) environment) func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")))))))))
+
+
+;;
 
 ;;outer layer interpretation
 
@@ -96,8 +147,8 @@
     ((eq? (operator expression) 'while)        (while-loop expression state return continue break throw)) 
     ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
-    ((eq? (operator expression) 'function)     (add-closure-binding expression state))
-   ; ((eq? (operator expression) 'funcall)      ()
+    ((eq? (operator expression) 'function)     (add-closure-global expression state))
+    ;((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (caddr expression) (cdr state) return continue break throw))
     (else (error "Invalid Type")))))
 
 
@@ -138,7 +189,8 @@
       ((eq? (operator expression) '-)                                        (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))  
       ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
       ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
-      ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
+      ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
+      ((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (cddr expression) state))
       (else                                                                  (error 'badop "Bad operator")))))
 
 ;;
