@@ -63,6 +63,7 @@
     (cond
       [(null? (car (cdddr func))) environment]
       ;cadr : function name caddr: formal params car cdddr: function body
+      [(list? (cadddr func)) (insert-global (box (append (cons 'closure (list (cadr func) (caddr func))) (car (cdddr func))))  environment)]
       [else (insert-global (box (list 'closure (cadr func) (caddr func) (caar (cdddr func))))  environment)])))
 
 (define insert-global; (() () )  
@@ -120,6 +121,7 @@
      (lambda (func-return)
        (cond
          ((not (retrieve-closure name environment)) (error "function undefined"))
+         ((list? (retrieve-closure name environment)) ((beginScope (cdddr (retrieve-closure name environment)) (bind-formal-actual (closure-formal-param (retrieve-closure name environment)) (find-value actual-params environment) environment) func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")))))
          (else (beginScope (list (closure-body(retrieve-closure name environment))) (bind-formal-actual (closure-formal-param (retrieve-closure name environment)) (find-value actual-params environment) environment) func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")))))))))
 
 
@@ -148,7 +150,7 @@
     ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
     ((eq? (operator expression) 'function)     (add-closure-global expression state))
-    ;((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (caddr expression) (cdr state) return continue break throw))
+    ;((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (cddr expression) state))
     (else (error "Invalid Type")))))
 
 
@@ -190,7 +192,7 @@
       ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
       ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
       ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (cddr expression) state))
+      ((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (cddr expression) (car (reverse state))))
       (else                                                                  (error 'badop "Bad operator")))))
 
 ;;
@@ -229,9 +231,9 @@
   (lambda (lis state)
     (cond
       ((null? lis)                                                                    empty-lis)
-      ((eq? (check-declare (varName lis) state) #t)                                   (error 'Mstate "Variable already declared"))
-      ((and (eq? (check-declare (varName lis) state) #f) (null? (null-val lis)))      (add-bind state (varName lis) null)) 
-      ((eq? (check-declare lis state) #f)                                             (add-bind state (varName lis) (Mvalue (the-value lis) state)))
+      ((eq? (check-declare (varName lis) (remove-global state)) #t)                                   (error 'Mstate "Variable already declared"))
+      ((and (eq? (check-declare (varName lis) (remove-global state)) #f) (null? (null-val lis)))     (add-bind state (varName lis) null)) 
+      ((eq? (check-declare lis (remove-global state)) #f)                                             (add-bind state (varName lis) (Mvalue (the-value lis) state)))
       (else                                                                           (error 'declare "No Value")))))
 
 ;;
@@ -372,6 +374,28 @@
       ((list? (first-element state)) (or (check-declare name (first-element state)) (check-declare name (the-rest state))))
       ((and (box? (first-element state)) (eq? (box-name (unbox (first-element state))) name) #t))
       (else (check-declare name (the-rest state))))))
+
+(define remove-global
+  (lambda (state)
+    (cond
+      ((null? state) '())
+      ((null? (cdr state)) '())
+      (else (cons (car state) (remove-global (cdr state)))))))
+
+;(define check-declare
+ ; (lambda (name state)
+  ;  (cond
+   ;   ((null? state) #f)
+    ;  ((null? (cdr state)) #f)
+     ; ((list? (car state)) (check-in-list name (car state)))
+      ;(else (check-declare name (cdr state))))))
+
+;(define check-in-list
+ ; (lambda (name state)
+  ;  (cond
+   ;   ((null? state) #f)
+    ;  ((and (box? (first-element state))(eq? (box-name (unbox (first-element state))) name)) #t)
+     ; (else (check-in-list name (cdr state))))))
 
 ;;
 ; Adds a binding to the state in the format (type name value)
