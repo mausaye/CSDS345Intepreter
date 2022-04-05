@@ -111,37 +111,37 @@
     (not (or (pair? x) (null? x)))))
 
 (define bind-formal-actual
-  (lambda (formal actual environment)
+  (lambda (formal actual environment throw)
     (cond
       ((and (null? formal) (null? actual)) environment)
       ((or (null? formal) (null? actual)) (error "mismatched number params"))
-      ((and (null? (cdr formal))(atom? actual)) (add-bind environment (car formal) (Mvalue actual environment)))
-      (else (bind-formal-actual (cdr formal) (cdr actual) (add-bind environment (car formal) (Mvalue (car actual) environment)))))))
+      ((and (null? (cdr formal))(atom? actual)) (add-bind environment (car formal) (Mvalue actual environment throw)))
+      (else (bind-formal-actual (cdr formal) (cdr actual) (add-bind environment (car formal) (Mvalue (car actual) environment throw)))))))
 
 (define createBinding
-  (lambda (formal actual environment state)
+  (lambda (formal actual environment state throw)
     (cond
       ((and (null? formal) (null? actual)) '())
       ((or (null? formal) (null? actual)) (error "mismatched number params"))
-      ((and (null? (cdr formal))(atom? actual)) (box (car formal) (Mvalue actual state)))
-      (else (append (createBinding (cdr formal) (cdr actual) environment state) (list (box (list (car formal) (Mvalue (car actual) state)))))))))
+      ((and (null? (cdr formal))(atom? actual)) (box (car formal) (Mvalue actual state throw)))
+      (else (append (createBinding (cdr formal) (cdr actual) environment state throw) (list (box (list (car formal) (Mvalue (car actual) state throw)))))))))
 
 (define find-value
-  (lambda (params environment)
+  (lambda (params environment throw)
     (cond
       ((null? params) params)
-      ((atom? params)  (Mvalue params environment))
-      ((list? (car params)) (cons (Mvalue (car params) environment) (find-value (cdr params) environment)))
+      ((atom? params)  (Mvalue params environment throw))
+      ((list? (car params)) (cons (Mvalue (car params) environment throw) (find-value (cdr params) environment)))
       (else  (cons (find-value (car params) environment) (find-value (cdr params) environment))))))
 
 (define interpret-function
-  (lambda (name actual-params environment)
+  (lambda (name actual-params environment throw)
     (call/cc
      (lambda (func-return)
        (cond
          ((not (retrieve-closure name environment environment)) (error "function undefined"))
-         ((list? (retrieve-closure name environment environment)) (beginScope (cddddr (retrieve-closure name environment environment)) (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment environment)) environment) (cadddr(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) throw)))
-         (else (beginScope (list (closure-body(retrieve-closure name environment environment))) (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment)) environment) (cadddr(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) throw))))))))
+         ((list? (retrieve-closure name environment environment)) (beginScope (cddddr (retrieve-closure name environment environment)) (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment environment)) environment throw) (cadddr(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw))
+         (else (beginScope (list (closure-body(retrieve-closure name environment environment))) (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment)) environment throw) (cadddr(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw)))))))
 
 
 
@@ -151,8 +151,8 @@
      (lambda (env-return)
       (cond
         ((not (retrieve-closure name environment environment)) (error "function undefined"))
-        ((list? (retrieve-closure name environment environment)) (interpret-body (cddddr (retrieve-closure name environment environment)) (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment environment)) environment) environment ))  (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return))
-        (else (interpret-body (list (closure-body(retrieve-closure name environment environment))) (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment)) environment) environment))  (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return)))))))
+        ((list? (retrieve-closure name environment environment)) (interpret-body (cddddr (retrieve-closure name environment environment)) (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment environment)) environment throw) environment ))  (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return))
+        (else (interpret-body (list (closure-body(retrieve-closure name environment environment))) (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment)) environment throw) environment))  (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return)))))))
 
 (define interpret-body
   (lambda (expression state return continue break throw env-return)
@@ -187,12 +187,12 @@
     ((eq? (operator expression) 'try)          (try expression state return continue break throw)) 
     ((eq? (operator expression) 'catch)        (catch expression state return continue break throw)) 
     ((eq? (operator expression) 'continue)     (continue (next-s state)))
-    ((eq? (operator expression) 'throw)        (throw (Mvalue (throw-value expression) state)))
+    ((eq? (operator expression) 'throw)        (throw (Mvalue (throw-value expression) state throw)))
     ((eq? (operator expression) 'break)        (break (next-s state)))
-    ((eq? (operator expression) 'var)          (declare expression state))
-    ((eq? (operator expression) '=)            (assign state (leftoperand expression) (Mvalue (rightoperand expression) state)))
+    ((eq? (operator expression) 'var)          (declare expression state throw))
+    ((eq? (operator expression) '=)            (assign state (leftoperand expression) (Mvalue (rightoperand expression) state throw)))
     ((eq? (operator expression) 'while)        (while-loop expression state return continue break throw)) 
-    ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state)))
+    ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state throw)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
     ((eq? (operator expression) 'function)     (add-closure-top expression state))
     ((eq? (operator expression) 'funcall)      (interpret-function-no-return (cadr expression) (cddr expression) state) throw)
@@ -215,7 +215,7 @@
 ; Returns the value of the expression.
 ;;
 (define Mvalue
-  (lambda (expression state)
+  (lambda (expression state throw)
     (cond
       ((null? expression)                                                    ((error 'Mvalue "No assigned value")))
       ((number? expression)                                                  expression)
@@ -230,21 +230,21 @@
       ((and (not (list? expression)) (not (check-declare expression state))) (error "Expression not declare"))
       
       ;; Computes a boolean expression corresponding to true
-      ((eq? (Mboolean expression state) #t)                                  (Mboolean expression state))
+      ((eq? (Mboolean expression state throw) #t)                                  (Mboolean expression state throw))
       
       ;; Computes a boolean expression corresponding to false
-      ((eq? (Mboolean expression state) #f)                                  (Mboolean expression state))
+      ((eq? (Mboolean expression state throw) #f)                                  (Mboolean expression state throw))
       
       ;; Retrieves the value of a variable
-      ((eq? (check-declare expression state) #t)                             (Mvalue (retrieveValue state expression) state))
+      ((eq? (check-declare expression state) #t)                             (Mvalue (retrieveValue state expression) state throw))
       
-      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
-      ((and (eq? (operator expression) '-)                                   (null? (cddr expression))) (- 0 (Mvalue(leftoperand expression) state)))  
-      ((eq? (operator expression) '-)                                        (- (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))  
-      ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
-      ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
-      ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? (operator expression) 'funcall)                                  (interpret-function (cadr expression) (cddr expression) state))
+      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw))) 
+      ((and (eq? (operator expression) '-)                                   (null? (cddr expression))) (- 0 (Mvalue(leftoperand expression) state throw)))  
+      ((eq? (operator expression) '-)                                        (- (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw)))  
+      ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw))) 
+      ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw))) 
+      ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw)))
+      ((eq? (operator expression) 'funcall)                                  (interpret-function (cadr expression) (cddr expression) state throw))
       (else                                                                  (error 'badop "Bad operator")))))
 
 ;;
@@ -252,23 +252,23 @@
 ; Computes the boolean expression provided.
 ;;
 (define Mboolean
-  (lambda (if-cond state)
+  (lambda (if-cond state throw)
     (cond 
       ((null? if-cond)                   (error 'Mboolean "Invalid Statement"))
-      ((number? if-cond)                 (Mvalue if-cond state))
+      ((number? if-cond)                 (Mvalue if-cond state throw))
       ((eq? if-cond 'true)               #t) ;; converts the atom true to the value #t
       ((eq? if-cond 'false)              #f) ;; converts the atom false to the value #f
-      ((check-declare if-cond state)     (Mvalue (retrieveValue state if-cond) state)) ;; retrieves the boolean variable value
-      ((eq? (operator if-cond) '<)       (< (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
-      ((eq? (operator if-cond) '>)       (> (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
-      ((eq? (operator if-cond) '<=)      (<= (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
-      ((eq? (operator if-cond) '>=)      (>= (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
-      ((eq? (operator if-cond) '==)      (eq? (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state))) 
-      ((eq? (operator if-cond) '!=)      (not (eq? (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))) 
-      ((eq? (operator if-cond) '||)      (or (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state))) 
-      ((eq? (operator if-cond) '&&)      (and (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state)))
-      ;((eq? (operator if-cond) 'funcall) (interpret-function (cadr if-cond) (cddr if-cond) (addlayer (get-global state))))
-      ((eq? (operator if-cond) '!)       (not (Mboolean (leftoperand if-cond) state)))))) 
+      ((check-declare if-cond state)     (Mvalue (retrieveValue state if-cond) state throw)) ;; retrieves the boolean variable value
+      ((eq? (operator if-cond) '<)       (< (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
+      ((eq? (operator if-cond) '>)       (> (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
+      ((eq? (operator if-cond) '<=)      (<= (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
+      ((eq? (operator if-cond) '>=)      (>= (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
+      ((eq? (operator if-cond) '==)      (eq? (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
+      ((eq? (operator if-cond) '!=)      (not (eq? (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw)))) 
+      ((eq? (operator if-cond) '||)      (or (Mboolean (leftoperand if-cond) state throw) (Mboolean (rightoperand if-cond) state throw))) 
+      ((eq? (operator if-cond) '&&)      (and (Mboolean (leftoperand if-cond) state throw) (Mboolean (rightoperand if-cond) state throw)))
+      ((eq? (operator if-cond) 'funcall) (interpret-function (cadr if-cond) (cddr if-cond) state throw))
+      ((eq? (operator if-cond) '!)       (not (Mboolean (leftoperand if-cond) state throw)))))) 
 
 
 ;;
@@ -281,12 +281,12 @@
 ; (var x (+ x y)) -> s: (var x (x + y))
 ;;
 (define declare
-  (lambda (lis state)
+  (lambda (lis state throw)
     (cond
       ((null? lis)                                                                    empty-lis)
       ((eq? (check-declare (varName lis) (car state)) #t)                                   (error 'Mstate "Variable already declared"))
       ((and (eq? (check-declare (varName lis) (car state)) #f) (null? (null-val lis)))     (add-bind state (varName lis) null)) 
-      ((eq? (check-declare lis state) #f)                                             (add-bind state (varName lis) (Mvalue (the-value lis) state)))
+      ((eq? (check-declare lis state) #f)                                             (add-bind state (varName lis) (Mvalue (the-value lis) state throw)))
       (else                                                                           (error 'declare "No Value")))))
 
 ;;
@@ -320,7 +320,7 @@
       ((null? lis)                            (error 'if-stmt "Input expression is null"))
       
       ; Check the condition and change the state if condition is true
-      ((Mboolean (cond-stmt lis) state)       (Mstate (stmt-one lis) state return continue break throw))
+      ((Mboolean (cond-stmt lis) state throw)       (Mstate (stmt-one lis) state return continue break throw))
       
       ; Checks if the else statement exists
       ((null? (else-stmt lis))                state)
@@ -338,8 +338,8 @@
     (call/cc (lambda (newbreak)
                (cond
                  ((null? lis)                                       (error 'while-loop "invalid while-loop"))
-                 ((Mboolean (cond-stmt lis) state)                  (Mstate lis (call/cc (lambda (cont) (Mstate (while-body lis) state return cont newbreak throw))) return continue newbreak throw))
-                 ((not (Mboolean (cond-stmt lis) state))            state))))))
+                 ((Mboolean (cond-stmt lis) state throw)                  (Mstate lis (call/cc (lambda (cont) (Mstate (while-body lis) state return cont newbreak throw))) return continue newbreak throw))
+                 ((not (Mboolean (cond-stmt lis) state throw))            state))))))
 
 
 ;;
@@ -388,11 +388,11 @@
 ; Returns values in the appropriate format.
 ;;
 (define execute-return
-  (lambda (expression state)
+  (lambda (expression state throw)
     (cond
-      ((eq? (Mvalue expression state) #t)      'true)
-      ((eq? (Mvalue expression state) #f)      'false)
-      (else                                    (Mvalue expression state)))))
+      ((or (eq? expression 'true) (eq? (Mvalue expression state throw) #t))      'true)
+      ((or (eq? expression 'false) (eq? (Mvalue expression state throw) #f))      'false)
+      (else                                    (Mvalue expression state throw)))))
       
 ;;
 ; Add a layer on the top of the state.
