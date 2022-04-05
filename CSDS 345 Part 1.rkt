@@ -50,7 +50,7 @@
   (lambda (exp environment return continue break throw)
     (cond
       ((null? exp) environment)
-      ((interpret-stmts (car (cdddar exp)) (addlayer environment) return continue break throw)))))
+      (else (interpret-stmts (car (cdddar exp)) (addlayer environment) return continue break throw)))))
 
 (define interpret-stmts
   (lambda (exp state return continue break throw)
@@ -63,8 +63,8 @@
     (cond
       [(null? (car (cdddr func))) environment]
       ;cadr : function name caddr: formal params car cdddr: function body
-      [(list? (cadddr func)) (insert-global (box (append (cons 'closure (list (cadr func) (caddr func))) (car (cdddr func))))  environment)]
-      [else (insert-global (box (list 'closure (cadr func) (caddr func) (caar (cdddr func))))  environment)])))
+      [(list? (cadddr func)) (insert-closure-top (box (append (cons 'closure (list (cadr func) (caddr func))) (car (cdddr func))))  environment)]
+      [else (insert-closure-top (box (list 'closure (cadr func) (caddr func) (caar (cdddr func))))  environment)])))
 
 (define insert-global; (() () )  
   (lambda (binding environment)
@@ -74,7 +74,14 @@
       ((and (list?(car environment)) (null? (cdr environment))) (list (cons binding (car environment))))
       [else (cons (car environment)(insert-global binding (cdr environment)))])))
 
-
+(define insert-closure-top
+  (lambda (binding env)
+    (cond
+      ((null? env) (list binding))
+      ;((null? (list? (car env)) (list (list binding))))
+      ((list? (car env)) (cons (insert-closure-top binding (car env)) (cdr env)))
+      (else (cons binding env)))))
+                
 (define closure-name
   (lambda (closure)
     (cadr closure)))
@@ -85,7 +92,7 @@
 
 (define closure-body
   (lambda (closure)
-    (cadddr closure)))
+    (cdddr closure)))
 
 (define retrieve-closure
   (lambda (name environment)
@@ -107,6 +114,14 @@
       ((and (null? (cdr formal))(atom? actual)) (add-bind environment (car formal) (Mvalue actual environment)))
       (else (bind-formal-actual (cdr formal) (cdr actual) (add-bind environment (car formal) (Mvalue (car actual) environment)))))))
 
+(define createBinding
+  (lambda (formal actual state)
+    (cond
+      ((and (null? formal) (null? actual)) '())
+      ((or (null? formal) (null? actual)) (error "mismatched number params"))
+      ((and (null? (cdr formal))(atom? actual)) (box (car formal) (Mvalue actual state)))
+      (else (append (createBinding (cdr formal) (cdr actual) state) (list (box (list (car formal) (Mvalue (car actual) state)))))))))
+
 (define find-value
   (lambda (params environment)
     (cond
@@ -121,10 +136,36 @@
      (lambda (func-return)
        (cond
          ((not (retrieve-closure name environment)) (error "function undefined"))
-         ((list? (retrieve-closure name environment)) ((beginScope (cdddr (retrieve-closure name environment)) (bind-formal-actual (closure-formal-param (retrieve-closure name environment)) (find-value actual-params environment) environment) func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")))))
-         (else (beginScope (list (closure-body(retrieve-closure name environment))) (bind-formal-actual (closure-formal-param (retrieve-closure name environment)) (find-value actual-params environment) environment) func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")))))))))
+         ((list? (retrieve-closure name environment)) (beginScope (cdddr (retrieve-closure name environment)) environment func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))
+         (else (beginScope (list (closure-body(retrieve-closure name environment))) environment func-return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")))))))))
 
 
+
+(define interpret-function-no-return
+  (lambda (name actual-params environment)
+    (call/cc
+     (lambda (env-return)
+      (cond
+        ((not (retrieve-closure name environment)) (error "function undefined"))
+        ((list? (retrieve-closure name environment)) (interpret-body (cdddr (retrieve-closure name environment)) environment (lambda (return) return) (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))env-return))
+        (else (interpret-body (list (closure-body(retrieve-closure name environment))) environment (lambda (return) return) (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement")) env-return)))))))
+
+(define interpret-body
+  (lambda (expression state return continue break throw env-return)
+    (cond
+      ((null? expression) (get-global state))
+      ((eq? 'return (caar expression)) (env-return (get-global state)))
+      (else (interpret-body (cdr expression) (Mstate (car expression) state return continue break throw) return continue break throw env-return )))))
+
+
+;(define getActive
+ ; (lambda (state)
+  ;  (define removeglobal (remove-global state))
+   ; (cond
+    ; ((null? state) state)
+     ;((list? (car state)) (cons (getActive (car state)) (cdr state)))
+     ;((not (eq? (car (unbox (car state))) 'closure)) (getActive (cdr state)))
+     ;((
 ;;
 
 ;;outer layer interpretation
@@ -150,9 +191,16 @@
     ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
     ((eq? (operator expression) 'function)     (add-closure-global expression state))
-    ;((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (cddr expression) state))
+    ((eq? (operator expression) 'funcall)      (interpret-function-no-return (cadr expression) (cddr expression) (cons (createBinding (closure-formal-param (retrieve-closure (cadr expression) state)) (cddr expression) state) (get-active-env (cadr expression) state))))
+    ;((eq? (operator expression) 'funcall)      (interpret-function-no-return (cadr expression) (cddr expression) (cons (createBinding (closure-formal-param (retrieve-closure (cadr expression) state)) (cddr expression) state) (get-active-env (cadr expression) state))))
     (else (error "Invalid Type")))))
 
+(define get-active-env
+  (lambda (funct-name env)
+    (cond
+      ((null? env) (error "Function not declared in the environment"))
+      ((null? (cdr env)) (cons (box (retrieve-closure funct-name env)) env))
+      (else (cons (box (retrieve-closure funct-name env)) (cdr env)))))) 
 
 ;;
 ; Mvalue: (expression: the parsed code segment, state: the current state of the program)
@@ -192,7 +240,7 @@
       ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
       ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state))) 
       ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state) (Mvalue (rightoperand expression) state)))
-      ((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (cddr expression) (car (reverse state))))
+      ((eq? (operator expression) 'funcall)      (interpret-function (cadr expression) (cddr expression) (cons (createBinding (closure-formal-param (retrieve-closure (cadr expression) state)) (cddr expression) state) (get-active-env (cadr expression) state))))
       (else                                                                  (error 'badop "Bad operator")))))
 
 ;;
@@ -215,6 +263,7 @@
       ((eq? (operator if-cond) '!=)      (not (eq? (Mvalue (leftoperand if-cond) state) (Mvalue (rightoperand if-cond) state)))) 
       ((eq? (operator if-cond) '||)      (or (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state))) 
       ((eq? (operator if-cond) '&&)      (and (Mboolean (leftoperand if-cond) state) (Mboolean (rightoperand if-cond) state)))
+      ;((eq? (operator if-cond) 'funcall) (interpret-function (cadr if-cond) (cddr if-cond) (addlayer (get-global state))))
       ((eq? (operator if-cond) '!)       (not (Mboolean (leftoperand if-cond) state)))))) 
 
 
@@ -371,6 +420,7 @@
   (lambda (name state)
     (cond
       ((null? state) #f)
+      ;((atom? state) #f)
       ((list? (first-element state)) (or (check-declare name (first-element state)) (check-declare name (the-rest state))))
       ((and (box? (first-element state)) (eq? (box-name (unbox (first-element state))) name) #t))
       (else (check-declare name (the-rest state))))))
@@ -382,20 +432,13 @@
       ((null? (cdr state)) '())
       (else (cons (car state) (remove-global (cdr state)))))))
 
-;(define check-declare
- ; (lambda (name state)
-  ;  (cond
-   ;   ((null? state) #f)
-    ;  ((null? (cdr state)) #f)
-     ; ((list? (car state)) (check-in-list name (car state)))
-      ;(else (check-declare name (cdr state))))))
+(define get-global
+  (lambda (state)
+    (cond
+      ((null? state) '())
+      ((null? (cdr state)) state)
+      (else (get-global (cdr state))))))
 
-;(define check-in-list
- ; (lambda (name state)
-  ;  (cond
-   ;   ((null? state) #f)
-    ;  ((and (box? (first-element state))(eq? (box-name (unbox (first-element state))) name)) #t)
-     ; (else (check-in-list name (cdr state))))))
 
 ;;
 ; Adds a binding to the state in the format (type name value)
