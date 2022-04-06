@@ -17,7 +17,14 @@
 ;;
 (define interpret
   (lambda (filename)
-    (interpreterRule (parser filename) initial-state)))
+    (userFormat (interpreterRule (parser filename) initial-state))))
+
+(define userFormat
+  (lambda (exp)
+    (cond
+      ((eq? exp #t) 'true)
+      ((eq? exp #f) 'false)
+      (else exp))))
 
 ;;
 ; interpreterRule: (expression: parsed code, state: the state of the program)
@@ -195,7 +202,7 @@
     ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state throw)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
     ((eq? (operator expression) 'function)     (add-closure-top expression state))
-    ((eq? (operator expression) 'funcall)      (interpret-function-no-return (cadr expression) (cddr expression) state) throw)
+    ((eq? (operator expression) 'funcall)      (interpret-function-no-return (cadr expression) (cddr expression) state throw))
     ;((eq? (operator expression) 'funcall)      (interpret-function-no-return (cadr expression) (cddr expression) (cons (createBinding (closure-formal-param (retrieve-closure (cadr expression) state)) (cddr expression) state) (get-active-env (cadr expression) state))))
     (else (error "Invalid Type")))))
 
@@ -229,11 +236,12 @@
       ;; Checks if it is a variable that has not been declared
       ((and (not (list? expression)) (not (check-declare expression state))) (error "Expression not declare"))
       
+      
       ;; Computes a boolean expression corresponding to true
-      ((eq? (Mboolean expression state throw) #t)                                  (Mboolean expression state throw))
+      ((eq? (Mboolean expression state throw) #t )                                 (Mboolean expression state throw))
       
       ;; Computes a boolean expression corresponding to false
-      ((eq? (Mboolean expression state throw) #f)                                  (Mboolean expression state throw))
+      ((eq? (Mboolean expression state throw) #f )                                   (Mboolean expression state throw))
       
       ;; Retrieves the value of a variable
       ((eq? (check-declare expression state) #t)                             (Mvalue (retrieveValue state expression) state throw))
@@ -253,11 +261,13 @@
 ;;
 (define Mboolean
   (lambda (if-cond state throw)
-    (cond 
+    (cond
       ((null? if-cond)                   (error 'Mboolean "Invalid Statement"))
       ((number? if-cond)                 (Mvalue if-cond state throw))
       ((eq? if-cond 'true)               #t) ;; converts the atom true to the value #t
       ((eq? if-cond 'false)              #f) ;; converts the atom false to the value #f
+      ((eq? if-cond #t)                  #t)
+      ((eq? if-cond #f)                  #f)
       ((check-declare if-cond state)     (Mvalue (retrieveValue state if-cond) state throw)) ;; retrieves the boolean variable value
       ((eq? (operator if-cond) '<)       (< (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
       ((eq? (operator if-cond) '>)       (> (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
@@ -265,10 +275,17 @@
       ((eq? (operator if-cond) '>=)      (>= (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
       ((eq? (operator if-cond) '==)      (eq? (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
       ((eq? (operator if-cond) '!=)      (not (eq? (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw)))) 
-      ((eq? (operator if-cond) '||)      (or (Mboolean (leftoperand if-cond) state throw) (Mboolean (rightoperand if-cond) state throw))) 
-      ((eq? (operator if-cond) '&&)      (and (Mboolean (leftoperand if-cond) state throw) (Mboolean (rightoperand if-cond) state throw)))
-      ((eq? (operator if-cond) 'funcall) (interpret-function (cadr if-cond) (cddr if-cond) state throw))
-      ((eq? (operator if-cond) '!)       (not (Mboolean (leftoperand if-cond) state throw)))))) 
+      ((eq? (operator if-cond) '||)      (or (valOrBoolean (leftoperand if-cond) state throw) (valOrBoolean (rightoperand if-cond) state throw))) 
+      ((eq? (operator if-cond) '&&)      (and (valOrBoolean (leftoperand if-cond) state throw) (valOrBoolean (rightoperand if-cond) state throw)))
+      ;((eq? (operator if-cond) 'funcall) (Mvalue if-cond state throw))
+      ((eq? (operator if-cond) '!)       (not (Mboolean (leftoperand if-cond) state throw))))))
+
+(define valOrBoolean
+  (lambda (exp state throw)
+    (cond
+      ((not (list? exp)) (Mboolean exp state throw))
+      ((eq? (car exp) 'funcall) (Mvalue exp state throw))
+      (else (Mboolean exp state throw)))))
 
 
 ;;
@@ -390,8 +407,8 @@
 (define execute-return
   (lambda (expression state throw)
     (cond
-      ((or (eq? expression 'true) (eq? (Mvalue expression state throw) #t))      'true)
-      ((or (eq? expression 'false) (eq? (Mvalue expression state throw) #f))      'false)
+      ((or (eq? expression 'true) (eq? (Mvalue expression state throw) #t))      #t)
+      ((or (eq? expression 'false) (eq? (Mvalue expression state throw) #f))      #f)
       (else                                    (Mvalue expression state throw)))))
       
 ;;

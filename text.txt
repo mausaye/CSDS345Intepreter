@@ -1,10 +1,12 @@
-function minmax(a, b, min) {
-  if (min && a < b || !min && a > b)
-    return true;
-  else
-    return false;
+function fib(a) {
+  if (a == 0)
+    return 0;
+  else if (a == 1)
+    return 1;
+  else 
+    return fib(a-1) + fib(a-2);
 }
 
 function main() {
-  return (minmax(10, 100, true) && minmax(5, 3, false));
+  return fib(4);
 }
