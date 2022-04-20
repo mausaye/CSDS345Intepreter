@@ -8,7 +8,7 @@
 ;                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(require "functionParser.rkt")
+(require "classParser.rkt")
 (require  "lex.rkt")
 
 ;;
@@ -109,8 +109,13 @@
   (lambda (name environment state)
     (cond
       ((null? environment) #f)
+      ;((null? (cdr environment )))
+      ;((not (list? environment)) #f)
       ((list? (car environment)) (or (retrieve-closure name (car environment) state) (retrieve-closure name (cdr environment) state)))
       ((and (box? (car environment)) (eq? name (closure-name (unbox (car environment))))) (unbox (car environment)))
+      ((and (box? (car environment)) (list? (unbox (car environment)))) (or (retrieve-closure name (unbox (car environment)) state) (retrieve-closure name (cdr environment) state)))
+      ((and (not (box? (car environment))) (eq? name (closure-name environment))) environment)
+      ((box? environment) (retrieve-closure name (unbox environment) state))
       (else (retrieve-closure name (cdr environment) state)))))
 
 (define atom?
@@ -147,8 +152,8 @@
      (lambda (func-return)
        (cond
          ((not (retrieve-closure name environment environment)) (error "function undefined"))
-         ((list? (retrieve-closure name environment environment)) (beginScope (cddddr (retrieve-closure name environment environment)) (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment environment)) environment throw) (cadddr(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw))
-         (else (beginScope (list (closure-body(retrieve-closure name environment environment))) (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment)) environment throw) (cadddr(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw)))))))
+         ((list? (retrieve-closure name environment environment)) (beginScope (cddddr (retrieve-closure name environment environment)) (cons (createBinding (closure-formal-param (retrieve-closure name environment environment)) actual-params (cadddr(retrieve-closure name environment environment)) environment throw) (list (box (retrieve-closure name environment environment)))) func-return (lambda (cont) cont) (lambda (break) break) throw))
+         (else (beginScope (list (closure-body(retrieve-closure name environment environment))) (cons (createBinding (closure-formal-param (box (retrieve-closure name environment environment))) actual-params (cadddr(retrieve-closure name environment)) environment throw) (list (retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw)))))))
 
 
 
@@ -211,7 +216,12 @@
     (cond
       ((null? env) (error "Function not declared in the environment"))
       ((null? (cdr env)) (cons (box (retrieve-closure funct-name env)) env))
-      (else (cons (box (retrieve-closure funct-name env)) (cdr env)))))) 
+      (else (cons (box (retrieve-closure funct-name env)) (cdr env))))))
+
+;(define get-func-
+ ; (lambda (name state)
+  ;  (cond
+      
 
 ;;
 ; Mvalue: (expression: the parsed code segment, state: the current state of the program)
