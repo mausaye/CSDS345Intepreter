@@ -1,29 +1,56 @@
-#lang racket
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                                            ;
 ; Quyen Huynh                                ;
 ; Tammy Lin                                  ;
 ; Elizabeth Waters                           ; 
-; CSDS 345 Interpreter Part 3                ;
+; CSDS 345 Interpreter Part 4                ;
 ;                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+#lang racket
 (require "classParser.rkt")
-(require  "lex.rkt")
 
-;;
-; interpret: (file name)
-; take in the filename and returns the state of the program after the code from the file is executed
-;;
+
+
 (define interpret
-  (lambda (filename className)
-    (userFormat (interpreterRule (cddddr (retrieve-closure className (bind-class-closure (car (parser filename)) initial-state))) (bind-class-closure (car (parser filename)) initial-state)))))
+  (lambda (filename)
+    (userFormat (interpreterRule (parser filename) initial-state))))
 
 (define bind-class-closure
   (lambda (expression state)
+    (cond                                                   ;; name of class        super classs                          class-body                                             variable 
+      ((eq? (car expression) 'class)  (box (cons 'class (cons (cadr expression) (list (caddr expression) (class-closure-body-func (cadddr expression) state) (class-closure-body-var (cadddr expression) '(()) )))))))))  ;; '(class A '(closure))
+     ;; (else (bind-class-closure (cdr expression) state)))))
+   
+(define class-closure-body-func
+  (lambda (expression state)
     (cond
-      ((eq? (car expression) 'class) (add-closure-top expression state))
-      (else (bind-class-closure (cdr expression) state)))))
+      ((null? expression) state)
+      ;((list? (car expression))  (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state)))
+      ((and (pair? (car expression)) (eq? (caar expression) 'function))
+                                    (class-closure-body-func (cdr expression) (add-func-closure-top (car expression) state)))
+       ((and (pair? (car expression)) (eq? (caar expression) 'var)) (class-closure-body-func (cdr expression) state)) 
+      ((pair? (car expression)) (append (class-closure-body-func (car expression) state) (class-closure-body-func (cdr expression) state))) 
+                                
+      (else (class-closure-body-func (cdr expression) state)))))
+
+ (define class-closure-body-var
+   (lambda (expression state)
+    (cond
+      ((null? expression) state)
+      ;(( and (not (atom? (car expression))) (eq? (caar expression) 'var))  (declare expression state (lambda (throw) (error "invalid throw")))) 
+      ((list? (car expression))  (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state)))
+      ((eq? (car expression) 'var)  (declare expression state (lambda (throw) (error "invalid throw")))) 
+      (else (class-closure-body-var (cdr expression) state)))))
+
+;;(define bind-instance-closure
+;;  (lambda (expression runtime-name state)
+;;    (cond
+;;;      ((null? expression) state)
+;;      ( (cons (retrieve-closure runtime-name state) (caddr (unbox (retrieve-closure runtime-name state)))))
+
+
+
+ 
 
 ;;
 ; interpreterRule: (expression: parsed code, state: the state of the program)
@@ -66,12 +93,12 @@
 ;;
 ; Adds the closure bind to the top for the environment.
 ;;
-(define add-closure-top
+(define add-func-closure-top
   (lambda (func environment)
     (cond
       [(null? (func-body func)) environment]
-      [(list? (func-body func)) (insert-closure-top (box (append (append (cons 'closure (list (closure-name func) (formal-param func))) (list environment)) (func-body func)))  environment)]
-      [else (insert-closure-top (box (list 'closure (input-name func) (formal-param func) (list environment) (function-body func)))  environment)])))
+      [(list? (func-body func)) (insert-func-closure-top (box (append (append (cons 'closure (list (closure-name func) (formal-param func))) (list environment)) (func-body func)))  environment)]
+      [else (insert-func-closure-top (box (list 'closure (input-name func) (formal-param func) (list environment) (function-body func)))  environment)])))
 
 ;; Inserts a binding to the global scope
 (define insert-global; (() ())  
@@ -82,12 +109,12 @@
       ((and (list?(the-head environment)) (null? (the-rest environment))) (list (cons binding (the-head environment))))
       [else                                                               (cons (the-head environment)(insert-global binding (the-rest environment)))])))
 
-;; helper function for add-closure-top
-(define insert-closure-top
+;; helper function for add-func-closure-top
+(define insert-func-closure-top
   (lambda (binding env)
     (cond
       ((null? env)                            (list binding))
-      ((list? (the-head env))                 (cons (insert-closure-top binding (the-head env)) (the-rest env)))
+      ((list? (the-head env))                 (cons (insert-func-closure-top binding (the-head env)) (the-rest env)))
       (else                                   (cons binding env)))))
 
 ;;
@@ -101,6 +128,15 @@
       ((list? (the-head environment))                                                                         (or (retrieve-closure name (the-head environment)) (retrieve-closure name (the-rest environment))))
       ((and (box? (the-head environment)) (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
       (else                                                                                                   (retrieve-closure name (the-rest environment))))))
+
+;;(define retrieve-class-closure
+;;  (lambda (name environment)
+;;    (cond
+;;     ((null? environment)                                                                                    #f)
+ ;;    ((list? (the-head environment))       (or (retrieve-class-closure name (the-head environment)) (retrieve-class-closure name (the-rest environment))))
+  ;;    ((and (box? (the-head environment)) (eq? name (cadr (unbox (the-head environment)))))           (unbox (the-head environment)))
+   ;;   (else                                                                                                   (retrieve-class-closure name (the-rest environment))))))
+
 
 ;;
 ; bind-formal-actual : take the formal parameter and the actual parameter, the enviroment is the first / active state and the state
@@ -201,7 +237,7 @@
     ((eq? (operator expression) 'while)        (while-loop expression state return continue break throw)) 
     ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state throw)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
-    ((eq? (operator expression) 'function)     (add-closure-top expression state))
+    ((eq? (operator expression) 'function)     (add-func-closure-top expression state))
     ((eq? (operator expression) 'funcall)      (interpret-function-no-return (closure-name expression) (func-param expression) state throw))
     (else (error "Invalid Type")))))
 
@@ -712,3 +748,4 @@
 (define function-body 
   (lambda (func)
     (caar(cdddr func))))
+
