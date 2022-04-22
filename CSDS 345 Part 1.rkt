@@ -12,13 +12,13 @@
 
 
 (define interpret
-  (lambda (filename)
-    (userFormat (interpreterRule (parser filename) initial-state))))
+  (lambda (filename main-class)
+    (userFormat (interpreterRule (parser filename) main-class initial-state))))
 
 (define bind-class-closure
   (lambda (expression state)
     (cond                                                   ;; name of class        super classs                          class-body                                             variable 
-      ((eq? (car expression) 'class)  (box (cons 'class (cons (cadr expression) (list (caddr expression) (class-closure-body-func (cadddr expression) state) (class-closure-body-var (cadddr expression) '(()) )))))))))  ;; '(class A '(closure))
+      ((eq? (car expression) 'class)  (box (cons 'class (cons (cadr expression) (list (caddr expression) (car (class-closure-body-func (cadddr expression) state)) (car (class-closure-body-var (cadddr expression) '(()) ))))))))))  ;; '(class A '(closure))
      ;; (else (bind-class-closure (cdr expression) state)))))
    
 (define class-closure-body-func
@@ -26,14 +26,14 @@
     (cond
       ((null? expression) state)
       ;((list? (car expression))  (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state)))
-      ((and (pair? (car expression)) (eq? (caar expression) 'function))
+      ((and (pair? (car expression)) (or (eq? (caar expression) 'function) (eq? (caar expression) 'static-function)))
                                     (class-closure-body-func (cdr expression) (add-func-closure-top (car expression) state)))
        ((and (pair? (car expression)) (eq? (caar expression) 'var)) (class-closure-body-func (cdr expression) state)) 
       ((pair? (car expression)) (append (class-closure-body-func (car expression) state) (class-closure-body-func (cdr expression) state))) 
                                 
       (else (class-closure-body-func (cdr expression) state)))))
 
- (define class-closure-body-var
+(define class-closure-body-var
    (lambda (expression state)
     (cond
       ((null? expression) state)
@@ -42,22 +42,33 @@
       ((eq? (car expression) 'var)  (declare expression state (lambda (throw) (error "invalid throw")))) 
       (else (class-closure-body-var (cdr expression) state)))))
 
-;;(define bind-instance-closure
-;;  (lambda (expression runtime-name state)
-;;    (cond
-;;;      ((null? expression) state)
-;;      ( (cons (retrieve-closure runtime-name state) (caddr (unbox (retrieve-closure runtime-name state)))))
 
+(define bind-instance-closure
+    (lambda (expression-body runtime-name state)
+    (cond
+      ((null? expression-body) state)
+      (else (append (retrieve-closure runtime-name state) (cadddr(unbox (car (cadddr (retrieve-closure runtime-name state))))))))))
 
-
+(define bind-global
+  (lambda (expression state)
+    (cond
+      ((null? expression) state)
+      ((list? (car expression)) (bind-global (cdr expression) (bind-global (car expression) state)))
+      ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression state) '(())))))) 
  
+(define add-class-closure-top
+  (lambda (closure state)
+    (cond
+      ((null? closure) state)
+      ((null? state) (list (list closure)))
+      (else (cons (append (list closure) (car state)) (cdr state)))))) 
 
 ;;
 ; interpreterRule: (expression: parsed code, state: the state of the program)
 ; Iterates through each section of the program, matching the keywords to the correct functions
 ;;
 (define interpreterRule
-  (lambda (expression state)
+  (lambda (expression main-class state)
     (call/cc
      (lambda (return)
        (cond
@@ -71,7 +82,7 @@
          ((null? (the-rest expression)) (Mstate (the-head expression) state return 
                                                 (lambda (cont) cont) (lambda (break) break) (lambda (throw) throw)))
          ; Traversed on the first list and the remaining lists
-         (else (interpreterRule (the-rest expression) (Mstate (the-head expression) state return
+         (else (interpreterRule (the-rest expression) main-class (Mstate (the-head expression) state return
                                                               (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))))))))
 
 ;;
@@ -127,7 +138,7 @@
       ((null? environment)                                                                                    #f)
       ((list? (the-head environment))                                                                         (or (retrieve-closure name (the-head environment)) (retrieve-closure name (the-rest environment))))
       ((and (box? (the-head environment)) (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
-      (else                                                                                                   (retrieve-closure name (the-rest environment))))))
+      (else                                                                                                   (retrieve-closure name (the-rest environment)))))) 
 
 ;;(define retrieve-class-closure
 ;;  (lambda (name environment)
@@ -239,10 +250,16 @@
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
     ((eq? (operator expression) 'function)     (add-func-closure-top expression state))
     ((eq? (operator expression) 'funcall)      (interpret-function-no-return (closure-name expression) (func-param expression) state throw))
+    ((eq? (operator expression) 'class)        (interpret-function-no-return (closure-name expression) (func-param expression) state throw));; newly added but need an intepret class function 
     (else (error "Invalid Type")))))
 
 ;;
 
+;(define interpret-class
+ ; (lambda (expression state return continue break throw)
+  ;  (cond
+    ;  ((and (null? (caddr expression)) (null? (cadddr expression))) state)
+    ;  ((
 ;;
 ; get-active-env : take the function name and the enviroment
 ; return the active enviroment
