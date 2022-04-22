@@ -27,7 +27,7 @@
       ((null? expression) state)
       ;((list? (car expression))  (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state)))
       ((and (pair? (car expression)) (or (eq? (caar expression) 'function) (eq? (caar expression) 'static-function)))
-                                    (class-closure-body-func (cdr expression) (add-func-closure-top (car expression) state)))
+                                    (cons  (class-closure-body-func (cdr expression) state) (add-func-closure-top (car expression) state)))
        ((and (pair? (car expression)) (eq? (caar expression) 'var)) (class-closure-body-func (cdr expression) state)) 
       ((pair? (car expression)) (append (class-closure-body-func (car expression) state) (class-closure-body-func (cdr expression) state))) 
                                 
@@ -53,8 +53,8 @@
   (lambda (expression state)
     (cond
       ((null? expression) state)
-      ((list? (car expression)) (bind-global (cdr expression) (bind-global (car expression) state)))
-      ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression state) '(())))))) 
+      ((list? (car expression)) (cons (bind-global (cdr expression) state) (bind-global (car expression) state)))
+      ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression state) state))))) 
  
 (define add-class-closure-top
   (lambda (closure state)
