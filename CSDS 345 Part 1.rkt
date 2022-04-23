@@ -15,10 +15,11 @@
   (lambda (filename main-class)
     (userFormat (interpreterRule (parser filename) main-class initial-state))))
 
+
 (define bind-class-closure
   (lambda (expression state)
     (cond                                                   ;; name of class        super classs                          class-body                                             variable 
-      ((eq? (car expression) 'class)  (box (cons 'class (cons (cadr expression) (list (caddr expression) (car (class-closure-body-func (cadddr expression) state)) (car (class-closure-body-var (cadddr expression) '(()) ))))))))))  ;; '(class A '(closure))
+      ((eq? (car expression) 'class)  (box (cons 'class (cons (cadr expression) (list (caddr expression) (class-closure-body-func (cadddr expression) state) (car (class-closure-body-var (cadddr expression) '(()))) ))))))))  ;; '(class A '(closure))
      ;; (else (bind-class-closure (cdr expression) state)))))
    
 (define class-closure-body-func
@@ -27,7 +28,7 @@
       ((null? expression) state)
       ;((list? (car expression))  (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state)))
       ((and (pair? (car expression)) (or (eq? (caar expression) 'function) (eq? (caar expression) 'static-function)))
-                                    (cons  (class-closure-body-func (cdr expression) state) (add-func-closure-top (car expression) state)))
+                                    (cons  (add-func-closure-top (car expression) state) (class-closure-body-func (cdr expression) state)))
        ((and (pair? (car expression)) (eq? (caar expression) 'var)) (class-closure-body-func (cdr expression) state)) 
       ((pair? (car expression)) (append (class-closure-body-func (car expression) state) (class-closure-body-func (cdr expression) state))) 
                                 
@@ -38,7 +39,10 @@
     (cond
       ((null? expression) state)
       ;(( and (not (atom? (car expression))) (eq? (caar expression) 'var))  (declare expression state (lambda (throw) (error "invalid throw")))) 
-      ((list? (car expression))  (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state)))
+      ((list? (car expression))  (if (or (eq? (caar expression) 'function) (eq? (caar expression) 'static-function))
+                                     (class-closure-body-var (cdr expression) state)
+                         
+                                     (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state))))
       ((eq? (car expression) 'var)  (declare expression state (lambda (throw) (error "invalid throw")))) 
       (else (class-closure-body-var (cdr expression) state)))))
 
@@ -47,14 +51,18 @@
     (lambda (expression-body runtime-name state)
     (cond
       ((null? expression-body) state)
-      (else (append (retrieve-closure runtime-name state) (cadddr(unbox (car (cadddr (retrieve-closure runtime-name state))))))))))
+      (else (cons runtime-name (list (cadddr (cdr (retrieve-closure runtime-name state)))))))))
 
-(define bind-global
+(define bind-global-helper
   (lambda (expression state)
     (cond
       ((null? expression) state)
-      ((list? (car expression)) (cons (bind-global (cdr expression) state) (bind-global (car expression) state)))
-      ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression state) state))))) 
+      ((list? (car expression)) (append (bind-global-helper (cdr expression) state) (bind-global-helper (car expression) state)))
+      ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression state) state)))))
+
+(define bind-global
+  (lambda (expression)
+    (cons '() (bind-global-helper expression '()))))
  
 (define add-class-closure-top
   (lambda (closure state)
@@ -62,8 +70,12 @@
       ((null? closure) state)
       ((null? state) (list (list closure)))
       (else (cons (append (list closure) (car state)) (cdr state)))))) 
-
+;'(()
+ ; (#&(class B (extends A) (((#&(closure set1 (a) (()) (funcall set2 a a)))) ((#&(closure main () (()) (var b (new B)) (funcall (dot b set1) 10) (return (funcall (dot b prod)))))) ()) (#&(b B))))
+  ;(#&(class A () (((#&(closure prod () (()) (return (* (dot this x) (dot this y)))))) ((#&(closure set2 (a b) (()) (= x a) (= y b)))) ()) (#&(x 6) #&(y 7)))))
 ;;
+
+
 ; interpreterRule: (expression: parsed code, state: the state of the program)
 ; Iterates through each section of the program, matching the keywords to the correct functions
 ;;
@@ -71,28 +83,38 @@
   (lambda (expression main-class state)
     (call/cc
      (lambda (return)
-       (cond
+       ;(cond
          ; The expression is empty, thus nothing to add to state
-         ((null? expression)(error "no main function found" ))
-         ((eq? (cadar expression) 'main) (interpret-main expression state return
-                                                         (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))
-         ; Expression is a number, return the number
-         ((number? expression) expression)
-         ; Only traversed on the first component since there is no other expression
-         ((null? (the-rest expression)) (Mstate (the-head expression) state return 
-                                                (lambda (cont) cont) (lambda (break) break) (lambda (throw) throw)))
-         ; Traversed on the first list and the remaining lists
-         (else (interpreterRule (the-rest expression) main-class (Mstate (the-head expression) state return
-                                                              (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))))))))
+         (lookup-main main-class (bind-global expression) return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement" )))))))
 
+  
+        ; ((eq? (cadar expression) 'main) (interpret-main expression state return
+                                                    ;     (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))
+         ; Expression is a number, return the number
+         ;((number? expression) expression)
+         ; Only traversed on the first component since there is no other expression
+         ;((null? (the-rest expression)) (Mstate (the-head expression) state return 
+                                                ;(lambda (cont) cont) (lambda (break) break) (lambda (throw) throw)))
+         ; Traversed on the first list and the remaining lists
+         ;(else (interpreterRule (the-rest expression) main-class (Mstate (the-head expression) state return
+                                                 ;             (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))))))))
+
+
+   (define lookup-main
+     (lambda (main-class state return cont break throw)
+        (interpret-main (retrieve-closure 'main (retrieve-closure main-class state)) (list (box (retrieve-closure main-class state))) return cont break throw)))
+        ;; ((null? expression) (error "No main function found"))
+         ;((eq? (car expression) 'main) (beginScope expression (retrieve-closure main-class state)))
+         ;(else (lookup-main (cdr expression))))))
 ;;
 ; Evaluates the main function and runs the code inside the block.
 ;;
+
 (define interpret-main
   (lambda (exp environment return continue break throw)
     (cond
       ((null? exp) environment)
-      (else (interpret-stmts (main-body exp) (addlayer environment) return continue break throw)))))
+      (else (interpret-stmts (cdr (cdddr exp)) (addlayer environment) return continue break throw)))))
 
 ;; interpret the each input statement 
 (define interpret-stmts
@@ -131,13 +153,21 @@
 ;;
 ; retrieve-closure : take in the name of the function, the enviroment is the the active state of the state and the complete state
 ; return the closure with the name searched in it
-;; 
+;;
+
+(define isNotInstance
+  (lambda (state)
+    (cond
+      ((null? state) #t)
+      ((or (eq? 'class (car (unbox state))) (eq? 'closure (car (unbox state)))) #t)
+      (else  #f))))
+
 (define retrieve-closure
   (lambda (name environment )
     (cond
       ((null? environment)                                                                                    #f)
       ((list? (the-head environment))                                                                         (or (retrieve-closure name (the-head environment)) (retrieve-closure name (the-rest environment))))
-      ((and (box? (the-head environment)) (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
+      ((and (and (box? (the-head environment)) (isNotInstance (the-head environment))) (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
       (else                                                                                                   (retrieve-closure name (the-rest environment)))))) 
 
 ;;(define retrieve-class-closure
@@ -269,8 +299,14 @@
     (cond
       ((null? env)                               (error "Function not declared in the environment"))
       ((null? (the-rest env))                    (cons (box (retrieve-closure funct-name env)) env))
-      (else                                      (cons (box (retrieve-closure funct-name env)) (the-rest env)))))) 
+      (else                                      (cons (box (retrieve-closure funct-name env)) (the-rest env))))))
 
+
+(define instance-or-value
+  (lambda (value expression state throw)
+    (cond
+      ((not (retrieve-closure value state)) (Mvalue value state throw))
+      (else (bind-instance-closure expression value state)))))
 ;;
 ; Mvalue: (expression: the parsed code segment, state: the current state of the program)
 ; example inputs:
@@ -283,13 +319,16 @@
   (lambda (expression state throw)
     (cond
       ((null? expression)                                                    ((error 'Mvalue "No assigned value")))
-      ((number? expression)                                                  expression)
+      ;((atom? expression)                                                  expression)
+      ((number? expression)   expression)
       
       ; Maps the atom 'true to #t
       ((or (eq? expression 'true) (eq? expression #t))                       #t)
-      
+  
       ;; Maps the atom 'false to #f
       ((or (eq? expression 'false) (eq? expression #f))                      #f)
+
+      ((eq? (check-declare expression state) #t)                             (instance-or-value (retrieveValue state expression) expression state throw))
       
       ;; Checks if it is a variable that has not been declared
       ((and (not (list? expression)) (not (check-declare expression state))) (error "Expression not declare"))
