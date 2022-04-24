@@ -1,10 +1,10 @@
-class B {
- var a= 10; 
-function set1(){
- return this; 
- }
- static function main () {
-    var b = new B();
-    return this.b; 
+class A {
+  function f() {
+    return 5;
+  }
+
+  static function main() {
+    var a = new A();
+    return a.f();
   }
 }
