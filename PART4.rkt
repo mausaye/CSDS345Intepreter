@@ -7,7 +7,6 @@
 ; CSDS 345 Interpreter Part 4                ;
 ;                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-#lang racket
 (require "classParser.rkt")
 
 
@@ -49,11 +48,12 @@
 
 ;; format : (var a (new B))
 (define bind-instance-closure
-  ;;                          this is the variable name 
-    (lambda ( type state)
+     ;; this is the variable name 
+   (lambda (type state)
     (cond
       ((null? type) (error "no vairbale name")); 
-      (else (list 'instance type  (cadddr (cdr (retrieve-closure type state)))))))) 
+      (else (list type (cadddr (cdr (retrieve-closure type state))) (car (cadddr (retrieve-closure type state))) ))))) 
+
 
 (define bind-global-helper
   (lambda (expression compile-type state)
@@ -173,7 +173,7 @@
     (cond
       ((null? environment)                                                                                    #f)
       ((list? (the-head environment))                                                                         (or (retrieve-closure name (the-head environment)) (retrieve-closure name (the-rest environment))))
-      ((and (and (box? (the-head environment)) (isNotInstance (the-head environment))) (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
+      ((and (box? (the-head environment))  (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
       (else                                                                                                   (retrieve-closure name (the-rest environment))))))
 
 
@@ -239,7 +239,7 @@
     (call/cc
      (lambda (func-return)
        (cond
-         ((or (not (retrieve-closure name environment )) (retrieve-closure (cadr name) environment)) (error "function undefined"))
+         ((not (retrieve-closure (cadr name) environment)) (error "function undefined"))
          ((eq? (car name) 'dot) (retrieve-closure (caddr name) (retrieve-closure (retrieveValue environment (cadr name)) environment)))
          ((list? (retrieve-closure name environment environment)) (beginScope (closure-body (retrieve-closure name environment environment))
                                                                               (cons (createBinding (closure-formal-param (retrieve-closure name environment environment))
@@ -249,7 +249,7 @@
          (else (beginScope (list (closure-body(retrieve-closure name environment environment)))
                            (cons (createBinding (closure-formal-param (retrieve-closure name environment environment))
                                  actual-params (closure-state(retrieve-closure name environment)) environment throw)
-                                 (closure-state(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw)))))))
+                                 (closure-state(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw))))))) 
 
 
 ;; evaluates a function that does not have a return value
@@ -433,7 +433,7 @@
       ((null? lis)                                                                                empty-lis)
       ((eq? (check-declare (varName lis) (the-head state)) #t)                                    (error 'Mstate "Variable already declared"))
       ((list? (caddr lis))                    (if (eq? 'new (caaddr lis))
-                                                 (add-bind state (varName lis) (bind-instance-closure (car (cdaddr lis)) state))
+                                                 (add-bind state (varName lis) (box(cons 'instance (bind-instance-closure (car (cdaddr lis)) state))))
                                                    (empty-lis))) ;bind class declaration to name of class
       ((and (eq? (check-declare (varName lis) (the-head state)) #f) (null? (null-val lis)))       (add-bind state (varName lis) null)) 
       ((eq? (check-declare lis state) #f)                                                         (add-bind state (varName lis) (Mvalue (the-value lis) state throw)))
