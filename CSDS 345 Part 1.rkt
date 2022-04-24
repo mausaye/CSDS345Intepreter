@@ -46,12 +46,13 @@
       ((eq? (car expression) 'var)  (declare expression state (lambda (throw) (error "invalid throw")))) 
       (else (class-closure-body-var (cdr expression) state)))))
 
-
+;; format : (var a (new B))
 (define bind-instance-closure
-    (lambda (expression-body runtime-name state)
+  ;;                          this is the variable name 
+    (lambda ( type state)
     (cond
-      ((null? expression-body) state)
-      (else (list 'instance runtime-name (list (cadddr (cdr (retrieve-closure runtime-name state)))))))))
+      ((null? type) (error "no vairbale name")); 
+      (else (list 'instance type  (cadddr (cdr (retrieve-closure type state)))))))) 
 
 (define bind-global-helper
   (lambda (expression compile-type state)
@@ -61,15 +62,16 @@
       ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression compile-type state) state)))))
 
 (define bind-global
-  (lambda (expression)
-    (cons '() (bind-global-helper expression '() '()))))
+  (lambda (expression )
+    (cons '() (bind-global-helper expression '() '() ))))
  
 (define add-class-closure-top
   (lambda (closure state)
     (cond
       ((null? closure) state)
       ((null? state) (list (list closure)))
-      (else (cons (append (list closure) (car state)) (cdr state)))))) 
+      (else (cons (append (list closure) (car state)) (cdr state))))))
+
 ;'(()
  ; (#&(class B (extends A) (((#&(closure set1 (a) (()) (funcall set2 a a)))) ((#&(closure main () (()) (var b (new B)) (funcall (dot b set1) 10) (return (funcall (dot b prod)))))) ()) (#&(b B))))
   ;(#&(class A () (((#&(closure prod () (()) (return (* (dot this x) (dot this y)))))) ((#&(closure set2 (a b) (()) (= x a) (= y b)))) ()) (#&(x 6) #&(y 7)))))
@@ -123,7 +125,7 @@
   (lambda (exp state return continue break throw)
     (cond
       ((null? exp) state)
-      (else (interpret-stmts (the-rest exp) (Mstate (the-head exp) state return continue break throw) return continue break throw)))))
+      (else (interpret-stmts (the-rest exp) (Mstate (the-head exp) state return continue break throw) return continue break throw))))) 
 
 ;;
 ; Adds the closure bind to the top for the environment.
@@ -131,8 +133,9 @@
 (define add-func-closure-top
   (lambda (func compile-type environment)
     (cond
-      [(null? (func-body func)) environment]
-      [(list? (func-body func)) (insert-func-closure-top (box (append (append (cons 'closure (list (closure-name func) (formal-param func))) (list environment)) compile-type (func-body func)))  environment)]
+      ;;        func-body = cadddr 
+      [(null? (cadddr func)) environment]
+      [(list? (cadddr func)) (insert-func-closure-top (box (append (append (cons 'closure (list (closure-name func) (formal-param func))) (list environment)) compile-type (cadddr func)))  environment)]
       [else (insert-func-closure-top (box (list 'closure (input-name func) (formal-param func) (list environment) compile-type (function-body func)))  environment)])))
 
 ;; Inserts a binding to the global scope
@@ -196,10 +199,13 @@
       (else (bind-formal-actual (the-rest formal) (the-rest actual) (add-bind environment (the-head formal) (Mvalue (the-head actual) environment throw)))))))
 
 (define bind-this
+  ;; compileName is the instance name 
   (lambda (compileName state)
     (cond
       ((null? compileName) state)
-      ((retrieve-closure )))))
+      (cons 'this (retrieve-closure compileName state )))))
+
+
 
 ;;
 ; createBinding : take the formal parameter, the actual parameter, the enviroment is the first/ active state, the state and throw
@@ -250,13 +256,15 @@
     (call/cc
      (lambda (env-return)
       (cond
-        ((not (retrieve-closure name environment environment)) (error "function undefined"))
-        ((list? (retrieve-closure name environment environment)) (interpret-body (closure-body (retrieve-closure name environment environment))
-                                                                                 (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment environment))
-                                                                                  actual-params (closure-state(retrieve-closure name environment environment)) environment throw) environment ))
+        ((not (retrieve-closure name  environment))
+
+         (error "function undefined")) 
+        ((list? (retrieve-closure name environment )) (interpret-body (closure-body (retrieve-closure name environment ))
+                                                                                 (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment ))
+                                                                                  actual-params (closure-state(retrieve-closure name environment )) environment throw) environment ))
                                                                                  (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return))
-        (else (interpret-body (list (closure-body(retrieve-closure name environment environment)))
-                              (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment environment))
+        (else (interpret-body (list (closure-body(retrieve-closure name environment )))
+                              (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment ))
                                actual-params (closure-state(retrieve-closure name environment)) environment throw) environment))
                               (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return)))))))
 
@@ -311,12 +319,12 @@
       ((null? (the-rest env))                    (cons (box (retrieve-closure funct-name env)) env))
       (else                                      (cons (box (retrieve-closure funct-name env)) (the-rest env))))))
 
-
+;; value here is the var name 
 (define instance-or-value
-  (lambda (value expression state throw)
+  (lambda (value  state throw)
     (cond
       ((not (retrieve-closure value state)) (Mvalue value state throw))
-      (else (bind-instance-closure expression value state)))))
+      (else (bind-instance-closure  value state))))) 
 ;;
 ; Mvalue: (expression: the parsed code segment, state: the current state of the program)
 ; example inputs:
@@ -338,7 +346,7 @@
       ;; Maps the atom 'false to #f
       ((or (eq? expression 'false) (eq? expression #f))                      #f)
 
-      ((eq? (check-declare expression state) #t)                             (instance-or-value (retrieveValue state expression) expression state throw))
+      ((eq? (check-declare expression state) #t)                             (instance-or-value (retrieveValue state expression)  state throw))
       
       ;; Checks if it is a variable that has not been declared
       ((and (not (list? expression)) (not (check-declare expression state))) (error "Expression not declare"))
@@ -361,6 +369,13 @@
       ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw)))
       ((eq? (operator expression) 'funcall)                                  (interpret-function (closure-name expression) (func-param expression) state throw))
       (else                                                                  (error 'badop "Bad operator")))))
+
+
+
+(define return-instance
+  (lambda (expression state)
+    (cond
+      (retrieve-closure (cadr expression) state))))
 
 ;;
 ; Mboolean: (if-cond: the condition to be evaulated, state: the current state of the program)
