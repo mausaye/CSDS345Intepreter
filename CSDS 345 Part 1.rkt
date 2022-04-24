@@ -62,7 +62,7 @@
 
 (define bind-global
   (lambda (expression)
-    (cons '() (bind-global-helper expression '() '()  '()))))
+    (cons '() (bind-global-helper expression '() '()))))
  
 (define add-class-closure-top
   (lambda (closure state)
