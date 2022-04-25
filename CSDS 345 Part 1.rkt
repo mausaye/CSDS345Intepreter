@@ -17,34 +17,34 @@
 
 
 (define bind-class-closure
-  (lambda (expression compile-type state)
+  (lambda (expression compile-type instance state)
     (cond                                                   ;; name of class        super classs                          class-body                                             variable 
-      ((eq? (car expression) 'class)  (box (cons 'class (cons (cadr expression) (list (caddr expression) (class-closure-body-func (cadddr expression) compile-type state) (car (class-closure-body-var (cadddr expression) '(()))) ))))))))  ;; '(class A '(closure))
+      ((eq? (car expression) 'class)  (box (cons 'class (cons (cadr expression) (list (caddr expression) (class-closure-body-func (cadddr expression) compile-type instance state) (car (class-closure-body-var (cadddr expression) compile-type instance '(()))) ))))))))  ;; '(class A '(closure))
      ;; (else (bind-class-closure (cdr expression) state)))))
    
 (define class-closure-body-func
-  (lambda (expression compile-type state)
+  (lambda (expression compile-type instance state)
     (cond
       ((null? expression) state)
       ;((list? (car expression))  (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state)))
       ((and (pair? (car expression)) (or (eq? (caar expression) 'function) (eq? (caar expression) 'static-function)))
-                                    (cons  (add-func-closure-top (car expression) compile-type state) (class-closure-body-func (cdr expression) compile-type state)))
-       ((and (pair? (car expression)) (eq? (caar expression) 'var)) (class-closure-body-func (cdr expression) compile-type state)) 
-      ((pair? (car expression)) (append (class-closure-body-func (car expression) compile-type state) (class-closure-body-func (cdr expression) compile-type state))) 
+                                    (cons  (add-func-closure-top (car expression) compile-type instance state) (class-closure-body-func (cdr expression) compile-type instance state)))
+       ((and (pair? (car expression)) (eq? (caar expression) 'var)) (class-closure-body-func (cdr expression) compile-type instance state)) 
+      ((pair? (car expression)) (append (class-closure-body-func (car expression) compile-type instance state) (class-closure-body-func (cdr expression)  compile-type instance state))) 
                                 
-      (else (class-closure-body-func (cdr expression) compile-type state)))))
+      (else (class-closure-body-func (cdr expression) compile-type instance state)))))
 
 (define class-closure-body-var
-   (lambda (expression state)
+   (lambda (expression compile-type instance state)
     (cond
       ((null? expression) state)
       ;(( and (not (atom? (car expression))) (eq? (caar expression) 'var))  (declare expression state (lambda (throw) (error "invalid throw")))) 
       ((list? (car expression))  (if (or (eq? (caar expression) 'function) (eq? (caar expression) 'static-function))
-                                     (class-closure-body-var (cdr expression) state)
+                                     (class-closure-body-var (cdr expression) compile-type instance  state)
                          
-                                     (class-closure-body-var (car expression) (class-closure-body-var (cdr expression) state))))
-      ((eq? (car expression) 'var)  (declare expression state (lambda (throw) (error "invalid throw")))) 
-      (else (class-closure-body-var (cdr expression) state)))))
+                                     (class-closure-body-var (car expression) compile-type instance (class-closure-body-var (cdr expression) compile-type instance state)))) 
+      ((eq? (car expression) 'var)  (declare expression compile-type instance state (lambda (throw) (error "invalid throw")))) 
+      (else (class-closure-body-var (cdr expression) compile-type instance  state)))))
 
 ;; format : (var a (new B))
 (define bind-instance-closure
@@ -56,15 +56,15 @@
 
 
 (define bind-global-helper
-  (lambda (expression compile-type state)
+  (lambda (expression compile-type instance state)
     (cond
       ((null? expression) state)
-      ((list? (car expression)) (append (bind-global-helper (cdr expression) compile-type state) (bind-global-helper (car expression) compile-type state)))
-      ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression compile-type state) state)))))
+      ((list? (car expression)) (append (bind-global-helper (cdr expression) compile-type instance state) (bind-global-helper (car expression) compile-type instance state)))
+      ((eq? 'class (car expression)) (add-class-closure-top (bind-class-closure expression compile-type instance state) state)))))
 
 (define bind-global
   (lambda (expression )
-    (cons '() (bind-global-helper expression '() '() ))))
+    (cons '() (bind-global-helper expression '() '() '())))) 
  
 (define add-class-closure-top
   (lambda (closure state)
@@ -88,7 +88,7 @@
      (lambda (return)
        ;(cond
          ; The expression is empty, thus nothing to add to state
-         (lookup-main main-class (bind-global expression) return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement" )))))))
+         (lookup-main main-class  '() '() (bind-global expression) return (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement" )))))))
 
   
         ; ((eq? (cadar expression) 'main) (interpret-main expression state return
@@ -102,9 +102,9 @@
          ;(else (interpreterRule (the-rest expression) main-class (Mstate (the-head expression) state return
                                                  ;             (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))))))))
  (define lookup-main
-     (lambda (main-class state return cont break throw)
+     (lambda (main-class compile-type instance state return cont break throw)
        ;;retrieve the main 
-        (interpret-main (retrieve-closure 'main (retrieve-closure main-class state)) state return cont break throw)))
+        (interpret-main (retrieve-closure 'main (retrieve-closure main-class state)) compile-type instance  state return cont break throw)))
 
 
 
@@ -120,28 +120,28 @@
 ;;
 
 (define interpret-main
-  (lambda (exp environment return continue break throw)
+  (lambda (exp  compile-type instance environment return continue break throw)
     (cond
       ((null? exp) environment)
-      (else (interpret-stmts (cdr (cdddr exp)) (addlayer environment) return continue break throw)))))
+      (else (interpret-stmts (cdr (cdddr exp)) compile-type instance (addlayer environment) return continue break throw)))))
 
 ;; interpret the each input statement 
 (define interpret-stmts
-  (lambda (exp state return continue break throw)
+  (lambda (exp compile-type instance state return continue break throw)
     (cond
       ((null? exp) state)
-      (else (interpret-stmts (the-rest exp) (Mstate (the-head exp) state return continue break throw) return continue break throw)))))   
+      (else (interpret-stmts (the-rest exp) compile-type instance (Mstate (the-head exp) compile-type instance state return continue break throw) return continue break throw)))))   
 
 ;;
 ; Adds the closure bind to the top for the environment.
 ;;
 (define add-func-closure-top
-  (lambda (func compile-type environment)
+  (lambda (func compile-type instance environment)
     (cond
       ;;        func-body = cadddr 
       [(null? (cadddr func)) environment]
       [(list? (cadddr func)) (insert-func-closure-top (box (append (append (cons 'closure (list (closure-name func) (formal-param func))) (list environment)) compile-type (cadddr func)))  environment)]
-      [else (insert-func-closure-top (box (list 'closure (input-name func) (formal-param func) (list environment) compile-type (function-body func)))  environment)])))
+      [else (insert-func-closure-top (box (list 'closure (input-name func) (formal-param func) (list environment) compile-type (function-body func))) compile-type instance environment)])))
 
 ;; Inserts a binding to the global scope
 (define insert-global; (() ())  
@@ -197,12 +197,12 @@
 ; return the formal and actual parameter binded 
 ;;
 (define bind-formal-actual
-  (lambda (formal actual environment throw)
+  (lambda (formal actual compile-type instance environment throw)
     (cond
       ((and (null? formal) (null? actual)) environment)
       ((or (null? formal) (null? actual)) (error "mismatched number params"))
-      ((and (null? (the-rest formal))(atom? actual)) (add-bind environment (the-head formal) (Mvalue actual environment throw)))
-      (else (bind-formal-actual (the-rest formal) (the-rest actual) (add-bind environment (the-head formal) (Mvalue (the-head actual) environment throw))))))) 
+      ((and (null? (the-rest formal))(atom? actual)) (add-bind environment (the-head formal) (Mvalue actual compile-type instance environment throw)))
+      (else (bind-formal-actual (the-rest formal) (the-rest actual) (add-bind environment (the-head formal) (Mvalue (the-head actual) compile-type instance environment throw))))))) 
 
 (define bind-this
   ;; compileName is the instance name 
@@ -218,54 +218,54 @@
 ; return the binding for the actual and formal parameter in the enviroment, and the state and throw
 ;;
 (define createBinding
-  (lambda (formal actual environment state throw)
+  (lambda (formal actual compile-type instance environment state throw)
     (cond
       ((and (null? formal) (null? actual)) '())
       ((or (null? formal) (null? actual)) (error "mismatched number params"))
-      ((and (null? (the-rest formal))(atom? actual)) (box (the-head formal) (Mvalue actual state throw)))
-      (else (append (createBinding (the-rest formal) (the-rest actual) environment state throw) (list (box (list (the-head formal) (Mvalue (the-head actual) state throw)))))))))
+      ((and (null? (the-rest formal))(atom? actual)) (box (the-head formal) (Mvalue actual compile-type instance state throw)))
+      (else (append (createBinding (the-rest formal) (the-rest actual) compile-type instance  environment state throw) (list (box (list (the-head formal) (Mvalue (the-head actual) compile-type instance state throw)))))))))
 
 ;;
 ; find-value : take the parameter , the enviroment and throw
 ; return the parameter evaluated in the enviroment
 ;;
 (define find-value
-  (lambda (params environment throw)
+  (lambda (params compile-type instance environment throw)
     (cond
       ((null? params) params)
-      ((atom? params)  (Mvalue params environment throw))
-      ((list? (the-head params)) (cons (Mvalue (the-head params) environment throw) (find-value (the-rest params) environment)))
+      ((atom? params)  (Mvalue params compile-type instance environment throw))
+      ((list? (the-head params)) (cons (Mvalue (the-head params) compile-type instance environment throw) (find-value (the-rest params) environment))) 
       (else  (cons (find-value (the-head params) environment) (find-value (the-rest params) environment))))))
 
 
 ;; evaluates a function that has a return value
 (define interpret-function
-  (lambda (name actual-params environment throw)
+  (lambda (name actual-params compile-type instance environment throw)
     (call/cc
      (lambda (func-return)
        (cond
        ;;  ((eq? (car (cadr name)) 'dot) (retrieve-closure (retrieveValue environment (cadr name)) environment))
         
-         ((eq? (car name) 'dot) (interpret-stmts (closure-body (retrieve-closure (caddr name) ( cdddr(unbox (retrieveValue environment (cadr name))))))
-                                                 (cons (createBinding (closure-formal-param (retrieve-closure (caddr name) (cdddr(retrieve-closure (cadr name) environment))))
-                                                                      actual-params '() environment throw) environment)
+         ((eq? (car name) 'dot) (interpret-stmts (closure-body (retrieve-closure (caddr name) ( cdddr(unbox (retrieveValue environment (cadr name)))))) compile-type instance
+                                                 (bind-this (cadr name)(cons (createBinding (closure-formal-param (retrieve-closure (caddr name) (cdddr(retrieve-closure (cadr name) environment))))
+                                                                      actual-params compile-type instance '() environment throw) environment))  
                                                        func-return (lambda (cont) cont) (lambda (break) break) throw))    ;; return body - execute body
         
          ((not (retrieve-closure (cadr name) environment)) (error "function undefined"))
          ((list? (retrieve-closure name environment environment)) (beginScope (closure-body (retrieve-closure name environment ))
                                                                               (cons (createBinding (closure-formal-param (retrieve-closure name  environment))
-                                                                               actual-params (closure-state(retrieve-closure name environment)) environment throw)
+                                                                               actual-params compile-type instance (closure-state(retrieve-closure name environment)) environment throw)
                                                                                (closure-state(retrieve-closure name environment))) func-return (lambda (cont) cont) (lambda (break) break) throw))
          ;; if the closure is within a list
-         (else (beginScope (list (closure-body(retrieve-closure name environment)))
+         (else (beginScope (list (closure-body(retrieve-closure name environment))) 
                            (cons (createBinding (closure-formal-param (retrieve-closure name environment))
-                                 actual-params (closure-state(retrieve-closure name environment)) environment throw)
+                                 actual-params compile-type instance (closure-state(retrieve-closure name environment)) environment throw)
                                  (closure-state(retrieve-closure name environment))) func-return (lambda (cont) cont) (lambda (break) break) throw)))))))  
 
 
 ;; evaluates a function that does not have a return value
 (define interpret-function-no-return
-  (lambda (name actual-params environment throw)
+  (lambda (name actual-params compile-type instance environment throw)
     (call/cc
      (lambda (env-return)
       (cond
@@ -274,20 +274,20 @@
          (error "function undefined")) 
         ((list? (retrieve-closure name environment )) (interpret-body (closure-body (retrieve-closure name environment ))
                                                                                  (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment ))
-                                                                                  actual-params (closure-state(retrieve-closure name environment )) environment throw) environment ))
+                                                                                  actual-params compile-type instance (closure-state(retrieve-closure name environment )) environment throw) environment ))
                                                                                  (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return))
         (else (interpret-body (list (closure-body(retrieve-closure name environment )))
                               (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment ))
-                               actual-params (closure-state(retrieve-closure name environment)) environment throw) environment))
+                               actual-params compile-type instance (closure-state(retrieve-closure name environment)) environment throw) environment))
                               (lambda (return) return) (lambda (cont) cont) (lambda (break) break) throw env-return)))))))
 
 ;; runs the body of the function using Mstate
 (define interpret-body
-  (lambda (expression state return continue break throw env-return)
+  (lambda (expression compile-type instance state return continue break throw env-return)
     (cond
       ((null? expression)                                                     (next-s state))
       ((eq? 'return (the-return expression))                                  (env-return state))
-      (else                                                                   (interpret-body (the-rest expression) (Mstate (the-head expression) state return continue break throw) return continue break throw env-return )))))
+      (else                                                                   (interpret-body (the-rest expression) (Mstate (the-head expression) compile-type instance state return continue break throw) return continue break throw env-return )))))
 
 ;;
 ; Mstate: (expression: parsed code segment beginning with a keyword, state: current state of the program)
@@ -295,23 +295,23 @@
 ; code segment has run.
 ;;
 (define Mstate
-  (lambda (expression state return continue break throw)
+  (lambda (expression compile-type instance state return continue break throw)
     (cond
     ((null? expression) expression)
     ((eq? (operator expression) 'begin)        (beginScope (the-rest expression) state return continue break throw))
     ((eq? (operator expression) 'try)          (try expression state return continue break throw)) 
     ((eq? (operator expression) 'catch)        (catch expression state return continue break throw)) 
     ((eq? (operator expression) 'continue)     (continue (next-s state)))
-    ((eq? (operator expression) 'throw)        (throw (Mvalue (throw-value expression) state throw)))
+    ((eq? (operator expression) 'throw)        (throw (Mvalue (throw-value expression) compile-type instance state throw)))
     ((eq? (operator expression) 'break)        (break (next-s state)))
-    ((eq? (operator expression) 'var)          (declare expression state throw))
-    ((eq? (operator expression) '=)            (assign state (leftoperand expression) (Mvalue (rightoperand expression) state throw)))
+    ((eq? (operator expression) 'var)          (declare expression compile-type instance state throw))
+    ((eq? (operator expression) '=)            (assign state (leftoperand expression) (Mvalue (rightoperand expression) compile-type instance state throw)))
     ((eq? (operator expression) 'while)        (while-loop expression state return continue break throw)) 
-    ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) state throw)))
+    ((eq? (operator expression) 'return)       (return (execute-return (return-val expression) compile-type instance state throw)))
     ((eq? (operator expression) 'if)           (if-stmt expression state return continue break throw))
     ((eq? (operator expression) 'function)     (add-func-closure-top expression state))
-    ((eq? (operator expression) 'funcall)      (interpret-function-no-return (closure-name expression) (func-param expression) state throw))
-    ((eq? (operator expression) 'class)        (interpret-function-no-return (closure-name expression) (func-param expression) state throw));; newly added but need an intepret class function 
+    ((eq? (operator expression) 'funcall)      (interpret-function-no-return (closure-name expression) (func-param expression) compile-type instance state throw))
+    ((eq? (operator expression) 'class)        (interpret-function-no-return (closure-name expression) (func-param expression) compile-type instance state throw));; newly added but need an intepret class function 
     (else (error "Invalid Type")))))
 
 ;;
@@ -334,10 +334,10 @@
 
 ;; value here is the var name 
 (define instance-or-value
-  (lambda (value  state throw)
+  (lambda (value  compile-type instance state throw)
     (cond
       ((number? value) value)
-      ((not (retrieve-closure value state)) (Mvalue value state throw))
+      ((not (retrieve-closure value state)) (Mvalue value compile-type instance state throw))
       (else (bind-instance-closure  value state))))) 
 ;;
 ; Mvalue: (expression: the parsed code segment, state: the current state of the program)
@@ -348,7 +348,7 @@
 ; Returns the value of the expression.
 ;;
 (define Mvalue
-  (lambda (expression state throw)
+  (lambda (expression compile-type instance state throw)
     (cond
       ((null? expression)                                                    ((error 'Mvalue "No assigned value")))
       ;((atom? expression)                                                  expression)
@@ -367,22 +367,22 @@
       
       
       ;; Computes a boolean expression corresponding to true
-      ((eq? (Mboolean expression state throw) #t )                           (Mboolean expression state throw))
+      ((eq? (Mboolean expression compile-type instance state throw) #t )                           (Mboolean expression state throw))
       
       ;; Computes a boolean expression corresponding to false
-      ((eq? (Mboolean expression state throw) #f )                           (Mboolean expression state throw))
+      ((eq? (Mboolean expression compile-type instance state throw) #f )                           (Mboolean expression state throw))
       
       ;; Retrieves the value of a variable
-      ((eq? (check-declare expression state) #t)                             (Mvalue (retrieveValue state expression) state throw))
+      ((eq? (check-declare expression state) #t)                             (Mvalue (retrieveValue state expression) compile-type instance state throw))
       
-      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw))) 
-      ((and (eq? (operator expression) '-)                                   (null? (null-val expression))) (- 0 (Mvalue(leftoperand expression) state throw)))  
-      ((eq? (operator expression) '-)                                        (- (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw)))  
-      ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw))) 
-      ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw))) 
-      ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw)))
-      ((eq? (operator expression) 'funcall)                                  (interpret-function (closure-name expression) (func-param expression) state throw))
-      ((eq? (operator expression) 'dot)                                      (retrieveValue (caddr (retrieve-closure (leftoperand expression) state))  (rightoperand expression) ))  
+      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) state throw))) 
+      ((and (eq? (operator expression) '-)                                   (null? (null-val expression))) (- 0 (Mvalue(leftoperand expression) compile-type instance state throw)))  
+      ((eq? (operator expression) '-)                                        (- (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw)))  
+      ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw))) 
+      ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw))) 
+      ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw)))
+      ((eq? (operator expression) 'funcall)                                  (interpret-function (closure-name expression) (func-param expression) compile-type instance state throw))
+      ((eq? (operator expression) 'dot)                                      (retrieveValue (caddr (retrieve-closure (leftoperand expression) state))  (rightoperand expression) ))
       (else                                                                  (error 'badop "Bad operator")))))
 
 ;;(bind-instance-closure 'B '(() (#&(class B () ((#&(closure set1 () () (return this))) (#&(closure main () () (var b (new B)) (return (dot this b))))) (#&(a 10))))))
@@ -399,21 +399,21 @@
 ; Computes the boolean expression provided.
 ;;
 (define Mboolean
-  (lambda (if-cond state throw)
+  (lambda (if-cond compile-type instance state throw)
     (cond
       ((null? if-cond)                   (error 'Mboolean "Invalid Statement"))
-      ((number? if-cond)                 (Mvalue if-cond state throw))
+      ((number? if-cond)                 (Mvalue if-cond compile-type instance state throw))
       ((eq? if-cond 'true)               #t) ;; converts the atom true to the value #t
       ((eq? if-cond 'false)              #f) ;; converts the atom false to the value #f
       ((eq? if-cond #t)                  #t)
       ((eq? if-cond #f)                  #f)
-      ((check-declare if-cond state)     (Mvalue (retrieveValue state if-cond) state throw)) ;; retrieves the boolean variable value
-      ((eq? (operator if-cond) '<)       (< (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
-      ((eq? (operator if-cond) '>)       (> (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
-      ((eq? (operator if-cond) '<=)      (<= (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
-      ((eq? (operator if-cond) '>=)      (>= (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
-      ((eq? (operator if-cond) '==)      (eq? (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw))) 
-      ((eq? (operator if-cond) '!=)      (not (eq? (Mvalue (leftoperand if-cond) state throw) (Mvalue (rightoperand if-cond) state throw)))) 
+      ((check-declare if-cond state)     (Mvalue (retrieveValue state if-cond) compile-type instance state throw)) ;; retrieves the boolean variable value
+      ((eq? (operator if-cond) '<)       (< (Mvalue (leftoperand if-cond)  compile-type instance state throw) (Mvalue (rightoperand if-cond) compile-type instance state throw))) 
+      ((eq? (operator if-cond) '>)       (> (Mvalue (leftoperand if-cond) compile-type instance state throw) (Mvalue (rightoperand if-cond) compile-type instance state throw))) 
+      ((eq? (operator if-cond) '<=)      (<= (Mvalue (leftoperand if-cond) compile-type instance state throw) (Mvalue (rightoperand if-cond) compile-type instance state throw))) 
+      ((eq? (operator if-cond) '>=)      (>= (Mvalue (leftoperand if-cond) compile-type instance state throw) (Mvalue (rightoperand if-cond) compile-type instance state throw))) 
+      ((eq? (operator if-cond) '==)      (eq? (Mvalue (leftoperand if-cond) compile-type instance state throw) (Mvalue (rightoperand if-cond) compile-type instance state throw))) 
+      ((eq? (operator if-cond) '!=)      (not (eq? (Mvalue (leftoperand if-cond) compile-type instance state throw) (Mvalue (rightoperand if-cond) compile-type instance state throw)))) 
       ((eq? (operator if-cond) '||)      (or (valOrBoolean (leftoperand if-cond) state throw) (valOrBoolean (rightoperand if-cond) state throw))) 
       ((eq? (operator if-cond) '&&)      (and (valOrBoolean (leftoperand if-cond) state throw) (valOrBoolean (rightoperand if-cond) state throw)))
       ((eq? (operator if-cond) '!)       (not (Mboolean (leftoperand if-cond) state throw))))))
@@ -423,11 +423,11 @@
 ; return whether to execute MBoolean and MValue
 ;; 
 (define valOrBoolean
-  (lambda (exp state throw)
+  (lambda (exp compile-type instance state throw)
     (cond
-      ((not (list? exp))                     (Mboolean exp state throw))
-      ((eq? (operator exp) 'funcall)         (Mvalue exp state throw))
-      (else                                  (Mboolean exp state throw)))))
+      ((not (list? exp))                     (Mboolean exp compile-type instance state throw))
+      ((eq? (operator exp) 'funcall)         (Mvalue exp compile-type instance state throw))
+      (else                                  (Mboolean exp  compile-type instance state throw)))))
 
 
 ;;
@@ -440,7 +440,7 @@
 ; (var x (+ x y)) -> s: (var x (x + y))
 ;;
 (define declare
-  (lambda (lis state throw)
+  (lambda (lis compile-type instance state throw)
     (cond
       ((null? lis)                                                                                empty-lis)
       ((eq? (check-declare (varName lis) (the-head state)) #t)                                    (error 'Mstate "Variable already declared"))
@@ -448,7 +448,7 @@
                                                  (add-bind state (varName lis) (box(cons 'instance (bind-instance-closure (car (cdaddr lis)) state))))
                                                    (empty-lis))) ;bind class declaration to name of class
       ((and (eq? (check-declare (varName lis) (the-head state)) #f) (null? (null-val lis)))       (add-bind state (varName lis) null)) 
-      ((eq? (check-declare lis state) #f)                                                         (add-bind state (varName lis) (Mvalue (the-value lis) state throw)))
+      ((eq? (check-declare lis state) #f)                                                         (add-bind state (varName lis) (Mvalue (the-value lis) compile-type instance state throw)))
       (else                                                                                       (error 'declare "No Value")))))
 
 ;;
@@ -477,18 +477,18 @@
 ; (if (cond) (stmt1) (stmt2): if and else
 ;;
 (define if-stmt
-  (lambda (lis state return continue break throw)
+  (lambda (lis compile-type instance state return continue break throw)
     (cond
       ((null? lis)                                  (error 'if-stmt "Input expression is null"))
       
       ; Check the condition and change the state if condition is true
-      ((Mboolean (cond-stmt lis) state throw)       (Mstate (stmt-one lis) state return continue break throw))
+      ((Mboolean (cond-stmt lis) state throw)       (Mstate (stmt-one lis) compile-type instance state return continue break throw))
       
       ; Checks if the else statement exists
       ((null? (else-stmt lis))                       state)
 
       ; Checks if the else if statement exists
-      (else                                          (Mstate (else-if-stmt lis) state return continue break throw))))) 
+      (else                                          (Mstate (else-if-stmt lis) compile-type instance state return continue break throw))))) 
       
 ;;
 ; while-loop: (lis: the while expression, state: the current state of the program)
@@ -496,11 +496,11 @@
 ; while (cond) (stmt)
 ;;
 (define while-loop
-  (lambda (lis state return continue break throw)
+  (lambda (lis compile-type instance state return continue break throw)
     (call/cc (lambda (newbreak)
                (cond
                  ((null? lis)                                             (error 'while-loop "invalid while-loop"))
-                 ((Mboolean (cond-stmt lis) state throw)                  (Mstate lis (call/cc (lambda (cont) (Mstate (while-body lis) state return cont newbreak throw))) return continue newbreak throw))
+                 ((Mboolean (cond-stmt lis) state throw)                  (Mstate lis compile-type instance (call/cc (lambda (cont) (Mstate (while-body lis) compile-type instance state return cont newbreak throw))) return continue newbreak throw))
                  ((not (Mboolean (cond-stmt lis) state throw))            state))))))
 
 
@@ -519,8 +519,8 @@
 ; Executes the catch body of the code.
 ;;
 (define catch
-  (lambda (catch-exp state return continue break throw)
-      (try-helper (the-rest catch-exp) (Mstate (first-element catch-exp) state return continue break throw) return continue break throw)))
+  (lambda (catch-exp compile-type instance state return continue break throw)
+      (try-helper (the-rest catch-exp) (Mstate (first-element catch-exp) compile-type instance state return continue break throw) return continue break throw)))
 
 ;;
 ; Executes the finally block of the code.
@@ -547,20 +547,20 @@
 ; Executes the body given and updates the state.
 ;;
 (define try-helper
-  (lambda (exp state return continue break throw)
+  (lambda (exp compile-type instance state return continue break throw)
     (cond
       ((null? exp)                   state)
-      (else                          (try-helper (the-rest exp) (Mstate (first-element exp) state return continue break throw) return continue break throw)))))
+      (else                          (try-helper (the-rest exp) (Mstate (first-element exp) compile-type instance state return continue break throw) return continue break throw)))))
 
 ;;
 ; Returns values in the appropriate format.
 ;;
 (define execute-return
-  (lambda (expression state throw)
+  (lambda (expression compile-type instance state throw)
     (cond
-      ((or (eq? expression 'true) (eq? (Mvalue expression state throw) #t))              #t)
-      ((or (eq? expression 'false) (eq? (Mvalue expression state throw) #f))             #f)
-      (else                                                                             (Mvalue expression state throw)))))
+      ((or (eq? expression 'true) (eq? (Mvalue expression compile-type instance state throw) #t))              #t)
+      ((or (eq? expression 'false) (eq? (Mvalue expression compile-type instance state throw) #f))             #f)
+      (else                                                                             (Mvalue expression compile-type instance state throw)))))
       
 ;;
 ; Add a layer on the top of the state.
@@ -573,11 +573,11 @@
 ; Runs each expression of the scope.
 ;;
 (define beginScope-helper 
-  (lambda (expression state return continue break throw)
+  (lambda (expression compile-type instance state return continue break throw)
     (cond
       ((null? expression)                 (next-s state))
       (else                               (beginScope-helper (the-rest expression) (Mstate (first-element expression)
-                                                                                           state return continue break throw) return continue break throw)))))
+                                                                                           compile-type instance state return continue break throw) return continue break throw)))))
 ;;
 ; Starts a new state and run the code inside the scope.
 ;;
