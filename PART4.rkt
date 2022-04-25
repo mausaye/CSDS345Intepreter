@@ -239,8 +239,8 @@
     (call/cc
      (lambda (func-return)
        (cond
-         ((not (retrieve-closure (cadr name) environment)) (error "function undefined"))
          ((eq? (car name) 'dot) (retrieve-closure (caddr name) (retrieve-closure (retrieveValue environment (cadr name)) environment)))
+         ((not (retrieve-closure (cadr name) environment)) (error "function undefined"))
          ((list? (retrieve-closure name environment environment)) (beginScope (closure-body (retrieve-closure name environment environment))
                                                                               (cons (createBinding (closure-formal-param (retrieve-closure name environment environment))
                                                                                actual-params (closure-state(retrieve-closure name environment environment)) environment throw)

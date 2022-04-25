@@ -1,3 +1,4 @@
+#lang racket
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                                            ;
 ; Quyen Huynh                                ;
@@ -6,7 +7,6 @@
 ; CSDS 345 Interpreter Part 4                ;
 ;                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-#lang racket
 (require "classParser.rkt")
 
 
@@ -48,11 +48,12 @@
 
 ;; format : (var a (new B))
 (define bind-instance-closure
-  ;;                          this is the variable name 
-    (lambda ( type state)
+     ;; this is the variable name 
+   (lambda (type state)
     (cond
       ((null? type) (error "no vairbale name")); 
-      (else (list 'instance type  (cadddr (cdr (retrieve-closure type state)))))))) 
+      (else (list type (cadddr (cdr (retrieve-closure type state))) (car (cadddr (retrieve-closure type state))) ))))) 
+
 
 (define bind-global-helper
   (lambda (expression compile-type state)
@@ -100,13 +101,17 @@
          ; Traversed on the first list and the remaining lists
          ;(else (interpreterRule (the-rest expression) main-class (Mstate (the-head expression) state return
                                                  ;             (lambda (cont) cont) (lambda (break) break) (lambda (throw) (error "Invalid throw statement"))))))))))
-
-
-
-
-   (define lookup-main
+ (define lookup-main
      (lambda (main-class state return cont break throw)
-        (interpret-main (retrieve-closure 'main (retrieve-closure main-class state)) (list (box (retrieve-closure main-class state))) return cont break throw)))
+       ;;retrieve the main 
+        (interpret-main (retrieve-closure 'main (retrieve-closure main-class state)) state return cont break throw)))
+
+
+
+ ;;  (define lookup-main
+  ;;   (lambda (main-class state return cont break throw)
+       ;;retrieve the main 
+      ;;  (interpret-main (retrieve-closure 'main (retrieve-closure main-class state)) (list (box (retrieve-closure main-class state))) return cont break throw)))
         ;; ((null? expression) (error "No main function found"))
          ;((eq? (car expression) 'main) (beginScope expression (retrieve-closure main-class state)))
          ;(else (lookup-main (cdr expression))))))
@@ -172,7 +177,8 @@
     (cond
       ((null? environment)                                                                                    #f)
       ((list? (the-head environment))                                                                         (or (retrieve-closure name (the-head environment)) (retrieve-closure name (the-rest environment))))
-      ((and (and (box? (the-head environment)) (isNotInstance (the-head environment))) (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
+      ((and (box? (the-head environment))  (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
+      ((and (and (box? (the-head environment)) (box? (cadr (unbox(the-head environment)))))  (and (eq? 'instance (car(unbox(cadr (unbox(the-head environment)))))) (eq? name (car (unbox (the-head environment))))))  (unbox( cadr(unbox (the-head environment)))))
       (else                                                                                                   (retrieve-closure name (the-rest environment))))))
 
 
@@ -196,7 +202,7 @@
       ((and (null? formal) (null? actual)) environment)
       ((or (null? formal) (null? actual)) (error "mismatched number params"))
       ((and (null? (the-rest formal))(atom? actual)) (add-bind environment (the-head formal) (Mvalue actual environment throw)))
-      (else (bind-formal-actual (the-rest formal) (the-rest actual) (add-bind environment (the-head formal) (Mvalue (the-head actual) environment throw)))))))
+      (else (bind-formal-actual (the-rest formal) (the-rest actual) (add-bind environment (the-head formal) (Mvalue (the-head actual) environment throw))))))) 
 
 (define bind-this
   ;; compileName is the instance name 
@@ -238,17 +244,23 @@
     (call/cc
      (lambda (func-return)
        (cond
-         ((or (not (retrieve-closure name environment )) (retrieve-closure (cadr name) environment)) (error "function undefined"))
-         ((eq? (car name) 'dot) (retrieve-closure (caddr name) (retrieve-closure (retrieveValue environment (cadr name)) environment)))
-         ((list? (retrieve-closure name environment environment)) (beginScope (closure-body (retrieve-closure name environment environment))
-                                                                              (cons (createBinding (closure-formal-param (retrieve-closure name environment environment))
-                                                                               actual-params (closure-state(retrieve-closure name environment environment)) environment throw)
-                                                                               (closure-state(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw))
+       ;;  ((eq? (car (cadr name)) 'dot) (retrieve-closure (retrieveValue environment (cadr name)) environment))
+        
+         ((eq? (car name) 'dot) (interpret-stmts (closure-body (retrieve-closure (caddr name) ( cdddr(unbox (retrieveValue environment (cadr name))))))
+                                                 (cons (createBinding (closure-formal-param (retrieve-closure (caddr name) (cdddr(retrieve-closure (cadr name) environment))))
+                                                                      actual-params '() environment throw) environment)
+                                                       func-return (lambda (cont) cont) (lambda (break) break) throw))    ;; return body - execute body
+        
+         ((not (retrieve-closure (cadr name) environment)) (error "function undefined"))
+         ((list? (retrieve-closure name environment environment)) (beginScope (closure-body (retrieve-closure name environment ))
+                                                                              (cons (createBinding (closure-formal-param (retrieve-closure name  environment))
+                                                                               actual-params (closure-state(retrieve-closure name environment)) environment throw)
+                                                                               (closure-state(retrieve-closure name environment))) func-return (lambda (cont) cont) (lambda (break) break) throw))
          ;; if the closure is within a list
-         (else (beginScope (list (closure-body(retrieve-closure name environment environment)))
-                           (cons (createBinding (closure-formal-param (retrieve-closure name environment environment))
+         (else (beginScope (list (closure-body(retrieve-closure name environment)))
+                           (cons (createBinding (closure-formal-param (retrieve-closure name environment))
                                  actual-params (closure-state(retrieve-closure name environment)) environment throw)
-                                 (closure-state(retrieve-closure name environment environment))) func-return (lambda (cont) cont) (lambda (break) break) throw)))))))
+                                 (closure-state(retrieve-closure name environment))) func-return (lambda (cont) cont) (lambda (break) break) throw)))))))  
 
 
 ;; evaluates a function that does not have a return value
@@ -324,6 +336,7 @@
 (define instance-or-value
   (lambda (value  state throw)
     (cond
+      ((number? value) value)
       ((not (retrieve-closure value state)) (Mvalue value state throw))
       (else (bind-instance-closure  value state))))) 
 ;;
@@ -369,12 +382,12 @@
       ((eq? (operator expression) '/)                                        (quotient (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw))) 
       ((eq? (operator expression) '%)                                        (remainder (Mvalue (leftoperand expression) state throw) (Mvalue (rightoperand expression) state throw)))
       ((eq? (operator expression) 'funcall)                                  (interpret-function (closure-name expression) (func-param expression) state throw))
-     ;;((eq? (operator expression) 'dot)                                       (Mvalue (rightoperand expression) (interpret-dot (leftoperand expression) state) throw)) 
+      ((eq? (operator expression) 'dot)                                      (retrieveValue (caddr (retrieve-closure (leftoperand expression) state))  (rightoperand expression) ))  
       (else                                                                  (error 'badop "Bad operator")))))
 
 ;;(bind-instance-closure 'B '(() (#&(class B () ((#&(closure set1 () () (return this))) (#&(closure main () () (var b (new B)) (return (dot this b))))) (#&(a 10))))))
 
-
+ 
 
 (define return-instance
   (lambda (expression state)
@@ -432,7 +445,7 @@
       ((null? lis)                                                                                empty-lis)
       ((eq? (check-declare (varName lis) (the-head state)) #t)                                    (error 'Mstate "Variable already declared"))
       ((list? (caddr lis))                    (if (eq? 'new (caaddr lis))
-                                                 (add-bind state (varName lis) (bind-instance-closure (car (cdaddr lis)) state))
+                                                 (add-bind state (varName lis) (box(cons 'instance (bind-instance-closure (car (cdaddr lis)) state))))
                                                    (empty-lis))) ;bind class declaration to name of class
       ((and (eq? (check-declare (varName lis) (the-head state)) #f) (null? (null-val lis)))       (add-bind state (varName lis) null)) 
       ((eq? (check-declare lis state) #f)                                                         (add-bind state (varName lis) (Mvalue (the-value lis) state throw)))
@@ -528,7 +541,7 @@
     (cond
       ((eq? exp #t) 'true)
       ((eq? exp #f) 'false)
-      (else exp))))
+      (else exp)))) 
 
 ;;
 ; Executes the body given and updates the state.
@@ -838,3 +851,14 @@
 (define function-body 
   (lambda (func)
     (caar(cdddr func))))
+
+(define test
+  (lambda (filename class result number)
+    (display (list "Test" number (eq? (interpret filename class) result)))))
+
+(define testAll
+  (lambda ()
+  (values
+  (test "test1.txt" 'A 15 1)
+  (test "test2.txt" 'A 12 2)
+  (test "test3.txt" 'A 125 3))))
