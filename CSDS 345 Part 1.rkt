@@ -178,7 +178,7 @@
       ((null? environment)                                                                                    #f)
       ((list? (the-head environment))                                                                         (or (retrieve-closure name (the-head environment)) (retrieve-closure name (the-rest environment))))
       ((and (box? (the-head environment))  (eq? name (closure-name (unbox (the-head environment)))))           (unbox (the-head environment)))
-      ((and (and (box? (the-head environment)) (box? (cadr (unbox(the-head environment)))))  (and (eq? 'instance (car(unbox(cadr (unbox(the-head environment)))))) (eq? name (car (unbox (the-head environment))))))  (unbox( cadr(unbox (the-head environment)))))
+      ((and (and (box? (the-head environment)) (box? (cadr (unbox(the-head environment)))))  (or (eq? 'instance (car(unbox(cadr (unbox(the-head environment)))))) (eq? name (car (unbox (the-head environment))))))  (unbox( cadr(unbox (the-head environment)))))
       (else                                                                                                   (retrieve-closure name (the-rest environment))))))
 
 
@@ -247,8 +247,8 @@
        ;;  ((eq? (car (cadr name)) 'dot) (retrieve-closure (retrieveValue environment (cadr name)) environment))
         
          ((eq? (car name) 'dot) (interpret-stmts (closure-body (retrieve-closure (caddr name) ( cdddr(unbox (retrieveValue environment (cadr name)))))) compile-type instance
-                                                 (bind-this (cadr name)(cons (createBinding (closure-formal-param (retrieve-closure (caddr name) (cdddr(retrieve-closure (cadr name) environment))))
-                                                                      actual-params compile-type instance '() environment throw) environment))  
+                                                 (append (bind-this (cadr name)(cons (createBinding (closure-formal-param (retrieve-closure (caddr name) (cdddr(retrieve-closure (cadr name) environment))))
+                                                                      actual-params compile-type instance '() environment throw) environment)) environment)  
                                                        func-return (lambda (cont) cont) (lambda (break) break) throw))    ;; return body - execute body
         
          ((not (retrieve-closure (cadr name) environment)) (error "function undefined"))
@@ -334,7 +334,7 @@
 
 ;; value here is the var name 
 (define instance-or-value
-  (lambda (value  compile-type instance state throw)
+  (lambda (value compile-type instance state throw)
     (cond
       ((number? value) value)
       ((not (retrieve-closure value state)) (Mvalue value compile-type instance state throw))
@@ -360,7 +360,7 @@
       ;; Maps the atom 'false to #f
       ((or (eq? expression 'false) (eq? expression #f))                      #f)
 
-      ((eq? (check-declare expression state) #t)                             (instance-or-value (retrieveValue state expression)  state throw))
+      ((eq? (check-declare expression state) #t)                             (instance-or-value (retrieveValue state expression) compile-type instance state throw))
       
       ;; Checks if it is a variable that has not been declared
       ((and (not (list? expression)) (not (check-declare expression state))) (error "Expression not declare"))
@@ -375,7 +375,7 @@
       ;; Retrieves the value of a variable
       ((eq? (check-declare expression state) #t)                             (Mvalue (retrieveValue state expression) compile-type instance state throw))
       
-      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) state throw))) 
+      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw))) 
       ((and (eq? (operator expression) '-)                                   (null? (null-val expression))) (- 0 (Mvalue(leftoperand expression) compile-type instance state throw)))  
       ((eq? (operator expression) '-)                                        (- (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw)))  
       ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw))) 
