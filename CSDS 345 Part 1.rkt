@@ -181,7 +181,12 @@
       ((and (and (box? (the-head environment)) (box? (cadr (unbox(the-head environment)))))  (and (eq? 'instance (car(unbox(cadr (unbox(the-head environment)))))) (eq? name (car (unbox (the-head environment))))))  (unbox( cadr(unbox (the-head environment)))))
       (else                                                                                                   (retrieve-closure name (the-rest environment))))))
 
-
+(define retrieve-function-closure
+  (lambda (name environment)
+    (cond
+      ((null? environment)                                                                                    #f)
+      ((list? (the-head environment))                                                                        (or (retrieve-function-closure (the-head environment)) (retrieve-function-closure (the-rest environment))))
+      ((eq? (
 
 ;;(define retrieve-class-closure
 ;;  (lambda (name environment)
@@ -209,7 +214,13 @@
   (lambda (compileName state)
     (cond
       ((null? compileName) state)
-      (cons 'this (retrieve-closure compileName state )))))
+      (else (add-top (box (list 'this (box(retrieve-closure compileName state )))) state)))))
+
+
+(define add-top
+  (lambda (bind state)
+    (cons (cons bind (car state)) (cdr state))))
+
 
 
 
@@ -269,9 +280,11 @@
     (call/cc
      (lambda (env-return)
       (cond
-        ((not (retrieve-closure name  environment))
-
-         (error "function undefined")) 
+        ((eq? (car name) 'dot) (interpret-stmts (closure-body (retrieve-closure (caddr name) ( cdddr(unbox (retrieveValue environment (cadr name)))))) compile-type instance
+                                                 (bind-this (cadr name)(cons (createBinding (closure-formal-param (retrieve-closure (caddr name) (cdddr(retrieve-closure (cadr name) environment))))
+                                                                      actual-params compile-type instance '() environment throw) environment))  
+                                                       env-return (lambda (cont) cont) (lambda (break) break) throw))
+        ((not (retrieve-closure name  environment))(error "function undefined")) 
         ((list? (retrieve-closure name environment )) (interpret-body (closure-body (retrieve-closure name environment ))
                                                                                  (addlayer (cons (createBinding (closure-formal-param (retrieve-closure name environment ))
                                                                                   actual-params compile-type instance (closure-state(retrieve-closure name environment )) environment throw) environment ))
@@ -360,7 +373,7 @@
       ;; Maps the atom 'false to #f
       ((or (eq? expression 'false) (eq? expression #f))                      #f)
 
-      ((eq? (check-declare expression state) #t)                             (instance-or-value (retrieveValue state expression)  state throw))
+      ((eq? (check-declare expression state) #t)                             (instance-or-value (retrieveValue state expression) compile-type instance state throw)) 
       
       ;; Checks if it is a variable that has not been declared
       ((and (not (list? expression)) (not (check-declare expression state))) (error "Expression not declare"))
@@ -375,7 +388,7 @@
       ;; Retrieves the value of a variable
       ((eq? (check-declare expression state) #t)                             (Mvalue (retrieveValue state expression) compile-type instance state throw))
       
-      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) state throw))) 
+      ((eq? (operator expression) '+)                                        (+ (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression)  compile-type instance state throw))) 
       ((and (eq? (operator expression) '-)                                   (null? (null-val expression))) (- 0 (Mvalue(leftoperand expression) compile-type instance state throw)))  
       ((eq? (operator expression) '-)                                        (- (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw)))  
       ((eq? (operator expression) '*)                                        (* (Mvalue (leftoperand expression) compile-type instance state throw) (Mvalue (rightoperand expression) compile-type instance state throw))) 
@@ -465,8 +478,10 @@
       (cond 
       ((null? new-value)                                    (error 'assign "No value given to assign"))
       ((eq? (check-declare name state) #t)                  (set-box! (search-box name state) (list name new-value)))
+      ((eq? (car name) 'dot)                                (set-box! (search-box (rightoperand name) (caddr(retrieve-closure (leftoperand name) state))) (list (rightoperand name) new-value)))
       (else                                                 (error 'assign "Expression has not declared")))
                                                             state)))
+
 
 ;;
 ; if-stmt: (lis: the if expression, state: the state of the program)
@@ -855,6 +870,15 @@
 (define test
   (lambda (filename class result number)
     (display (list "Test" number (eq? (interpret filename class) result)))))
+
+;;((#&(this #&(instance A (#&(x 6)) (#&(closure setX (x) () (= (dot this x) x))))) #&(x 6))
+;;(#&(this #&(instance A (#&(x 6)) (#&(closure setX (x) () (= (dot this x) x))))) #&(x 30))
+;; (#&(a2 #&(instance A (#&(x 6)) (#&(closure setX (x) () (= (dot this x) x))))) #&(a1 #&(instance A (#&(x 6)) (#&(closure setX (x) () (= (dot this x) x))))))
+;; ()
+;; (#&(class A () ((#&(closure setX (x) () (= (dot this x) x))) (#&(closure add (a) () (return (+ (dot a x) (dot this x)))))
+;;                                                              (#&(closure main () () (var a1 (new A)) (var a2 (new A)) (funcall (dot a1 setX) 30) (funcall (dot a2 setX) 6) (return (funcall (dot a1 add) a2)))))
+;;      (#&(x 6)))))
+
 
 (define testAll
   (lambda ()
